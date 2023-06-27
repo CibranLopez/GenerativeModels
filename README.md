@@ -4,7 +4,7 @@ This project introduces a novel framework for generating new crystal materials u
 
 The core technology behind this framework is based on a graph-like representation of data, where the diffusion process is achieved through the use of Markov chains. The denoising aspect of the model is implemented using convolutional graph neural networks, ensuring high-quality results.
 
-## Features
+### Features
 
 - Generation of new crystal materials beyond the limitations of existing databases
 - Optimization of arbitrary targets such as conductivity, absorption, and more
@@ -14,21 +14,28 @@ The core technology behind this framework is based on a graph-like representatio
 - High stability and reliability of generated crystals
 - Public domain usage
 
-## Requirements
+Please be aware that the code is under active development, bug reports are welcomed in the GitHub issues!
 
-- torch > 2.7
-- python > 3.9
+## Installation
 
-## Contact
+To download the repository and install the dependencies:
 
-For any questions or inquiries, please reach out to:
+```bash
+git clone https://github.com/CibranLopez/GenerativeModels.git
+cd GenerativeModels
+pip3 install -r requirements.txt
+```
 
-- Cibran Lopez
-- Email: cibran.lopez@upc.edu
-- GitHub: [Project Repository](https://github.com/yourusername/project-repo)
+## Execution
 
-Feel free to ask any questions or provide feedback through the provided contact information or the GitHub forum.
+---
 
-## License
+## Authors
 
-This project is released under the public domain. You are free to use, modify, and distribute it without any restrictions.
+This project is being developed by:
+
+ - Cibrán López Álvarez
+
+## Contact, questions and contributing
+
+If you have questions, please don't hesitate to reach out at: cibran.lopez@upc.edu
