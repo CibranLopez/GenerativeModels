@@ -4,6 +4,7 @@ import re                  as re
 import torch               as torch
 import torch.nn.functional as F
 import sys                 as sys
+import torch.nn            as nn
 import yaml
 
 from os                 import mkdir, path
@@ -14,6 +15,154 @@ from torch_geometric.nn import global_mean_pool
 # Checking if pytorch can run in GPU, else CPU
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
+
+def get_atoms_in_box(particle_types, composition, cell, atomic_masses, charges, electronegativities, ionization_energies, positions, L):
+    """Create a list with all nodes and their positions inside the rectangular box.
+
+    Args:
+        particle_types      (list): type of particles (0, 1...).
+        atomic_masses       (dict):
+        charges             (dict):
+        electronegativities (dict):
+        ionization_energies (dict):
+        positions:
+        L                   (list): distances of the box in each direction.
+
+    Returns:
+        all_nodes     (list): features of each node in the box.
+        all_positions (list): positions of the respective nodes.
+    """
+
+    # Getting box dimensions
+    Lx, Ly, Lz = L
+
+    # Getting all nodes in the supercell
+    all_nodes     = []
+    all_positions = []
+    for idx in range(len(particle_types)):
+        # Get particle type (index of type wrt composition in POSCAR)
+        particle_type = particle_types[idx]
+
+        # Name of the current species
+        species_name = composition[particle_type]
+
+        # Loading the node (mass, charge, electronegativity anbd ionization energy)
+        node = [float(atomic_masses[species_name]),
+                float(charges[species_name]),
+                float(electronegativities[species_name]),
+                float(ionization_energies[species_name])
+                ]
+
+        # Get the initial position
+        position_0 = positions[idx]
+
+        # Get all images of particle_0 inside the intended box
+        alpha_i = 1
+        alpha_j = 1
+        alpha_k = 1
+        i = 0
+        distance = None  # So first time it tries to get closer to the box
+        break_i = False
+        while True:
+            j = 0
+            break_j = False
+            while True:
+                k = 0
+                break_k = False
+                while True:
+                    # Moving to the corresponding image
+                    position = position_0 + [i, j, k]
+
+                    # Converting to cartesian distances
+                    position_cartesian = np.dot(position, cell)
+
+                    # If the cartesian coordinates belong to the imposed box, it is added to the list
+                    if np.all(position_cartesian >= 0) and np.all(position_cartesian < [Lx, Ly, Lz]):
+                        all_nodes.append(node)
+                        all_positions.append(position_cartesian)
+                        distance = 0
+                    else:
+                        distancex = np.min([np.abs(position_cartesian[0]), np.abs(position_cartesian[0] - Lx)])
+                        distancey = np.min([np.abs(position_cartesian[1]), np.abs(position_cartesian[1] - Ly)])
+                        distancez = np.min([np.abs(position_cartesian[2]), np.abs(position_cartesian[2] - Lz)])
+                        new_distance = distancex + distancey + distancez
+
+                        # If new distance is smaller than before or no initialized, k advances in alpha_k direction
+                        # Else, we change direction or start again
+                        if (distance is None) or (new_distance < distance):
+                            distance = new_distance
+                            k += alpha_k
+                        else:
+                            distance = None  # Initilizing it agains
+
+                            # If alpha_k is negative, k-search is finished; else, alpha_k is negative and it starts in zero
+                            if alpha_k == 1:
+                                alpha_k = -1
+                                k = -1
+                            else:
+                                # Got to extreme for k
+                                alpha_k = 1
+                                break_k = True
+
+                                # Got to extreme for j
+                                if k == 0:
+                                    if alpha_j == 1:
+                                        alpha_j = -1
+                                    else:
+                                        break_j = True
+
+                                # Got to extreme for i
+                                if j == 0:
+                                    if alpha_i == 1:
+                                        alpha_i = -1
+                                    else:
+                                        break_i = True
+
+                    # Updating k
+                    if break_k: break
+                # Updating j
+                j += alpha_j
+                if break_j: break
+            # Updating i
+            i += alpha_i
+            if break_i: break
+    return all_nodes, all_positions
+
+
+def get_edges_in_box(nodes, positions):
+    """From a list of nodes and corresponding positions, get all edges and attributes for the graph.
+    Every pair of particles are linked.
+
+    Args:
+        nodes (list): all nodes in the box.
+        positions (list): corresponding positions of the particles.
+
+    Returns:
+        edges      (list): edges linking all pairs of nodes.
+        attributes (list): weights of the corresponding edges (euclidean distance).
+    """
+
+    # Get total particles in the box
+    total_particles = len(nodes)
+
+    # For each node, look for the three closest particles so that each node only has three connections
+    edges = []
+    attributes = []
+    for index_0 in range(total_particles):
+        # Compute the distance of the current particle to all the others
+        distances = np.linalg.norm(positions - positions[index_0])
+
+        # Generate indexes, to easily keep track of the distance
+        idxs = np.arange(total_particles)
+
+        # Delete the distance to itself
+        idxs = np.delete(idxs, index_0)
+        distances = np.delete(distances, index_0)
+
+        # Add all edges
+        edges.append([np.ones(len(idxs)) * index_0, idxs])  # This list is reversed !!!
+        attributes.append(distances)
+    return edges, attributes
 
 def graph_POSCAR_encoding(cell, composition, concentration, positions, L):
     """Generates a graph parameters from a POSCAR.
@@ -32,157 +181,56 @@ def graph_POSCAR_encoding(cell, composition, concentration, positions, L):
         attributes (torch tensor): Corresponding weights of the generated connections.
     """
 
-    # Getting box dimensions
-    Lx, Ly, Lz = L
-
     # Loading dictionary of atomic masses
 
-    atomic_masses = {}
-    charges = {}
+    atomic_masses       = {}
+    charges             = {}
     electronegativities = {}
     ionization_energies = {}
     with open('/Users/cibran/Work/UPC/VASP/atomic_masses.dat', 'r') as atomic_masses_file:
         for line in atomic_masses_file:
             (key, mass, charge, electronegativity, ionization_energy) = line.split()
-            atomic_masses[key] = mass
-            charges[key] = charge
+            atomic_masses[key]       = mass
+            charges[key]             = charge
             electronegativities[key] = electronegativity
             ionization_energies[key] = ionization_energy
 
     # Counting number of particles
-    total_particles = np.sum(concentration)
+    POSCAR_particles = np.sum(concentration)
 
     # Getting particle types
     particle_types = []
     for i in range(len(composition)):
         particle_types += [i] * concentration[i]
 
-    # Getting all nodes in the supercell
-    nodes = []
-    positions = []
-    for idx in range(len(particle_types)):
-        # Get particle type (index of type wrt composition in POSCAR)
-        particle_type = particle_types[idx]
+    # Applying periodic boundary conditions (in reduced coordinates)
+    # This is not strictly necessary (all images are being checked eitherway), but it can simplify things
+    while np.any(positions > 0.5):
+        positions[positions > 0.5] -= 1
+    while np.any(positions < 0.5):
+        positions[positions < 0.5] += 1
+    return particle_types, atomic_masses, charges, electronegativities, ionization_energies
+'''
+    # Load all nodes and respective positions in the box
+    all_nodes, all_positions = get_atoms_in_box(particle_types,
+                                                composition,
+                                                cell,
+                                                atomic_masses,
+                                                charges,
+                                                electronegativities,
+                                                ionization_energies,
+                                                positions,
+                                                L)
 
-        # Name of the current species
-        species_name = composition[particle_type]
+    # Get edges and attributes for the corresponding nodes
+    edges, attributes = get_edges_in_box(nodes, all_positions)
 
-        # Loading the node (mass, charge, electronegativity anbd ionization energy)
-        node = [float(atomic_masses[species_name]),
-                float(charges[species_name]),
-                float(electronegativities[species_name]),
-                float(ionization_energies[species_name])
-               ]
-
-        # Get the initial position
-        position_0 = positions[idx]
-
-        # Applying periodic boundary conditions (in reduced coordinates)
-        while np.any(position_0 > 0.5):
-            position_0[position_0 > 0.5] -= 1
-
-        alpha_i = 1
-        alpha_j = 1
-        alpha_k = 1
-        i = 0
-        break_i = False
-        while True:
-            j = 0
-            break_j = False
-            while True:
-                k = 0
-                break_k = False
-                while True:
-                    # Moving to the corresponding image
-                    position = position_0 + [i, j, k]
-
-                    # Converting to cartesian distances
-                    position_cartesian = np.dot(position, cell)
-
-                    # If the cartesian coordinates belong to the imposed box, it is added to the list
-                    if np.all(position_cartesian >= 0) and np.all(position_cartesian < [Lx, Ly, Lz]):
-                        nodes.append(node)
-                        positions.append(position_cartesian)
-                        distance = 0
-                    else:
-                        distancex = np.min(np.abs(position_cartesian[0]), np.abs(position_cartesian[0] - Lx))
-                        distancey = np.min(np.abs(position_cartesian[1]), np.abs(position_cartesian[1] - Ly))
-                        distancez = np.min(np.abs(position_cartesian[2]), np.abs(position_cartesian[2] - Lz))
-                        new_distance = distancex + distancey + distancez
-
-                        # If new distance is smaller than before, k advances in alpha_k direction; else, we change direction or start again
-                        if new_distance < distance:
-                            distance = new_distance
-                            k += alpha_k
-                        else:
-                            distance = -1
-
-                            # If alpha_k is negative, k-search is finished; else, alpha_k is negative and it starts in zero
-                            if alpha_k = 1:
-                                alpha_k = -1
-                                k = -1
-                            else:
-                                # Got to extreme for k
-                                alpha_k = 1
-                                break_k = True
-
-                                # Got to extreme for j
-                                if k == 0:
-                                    if alpha_j = 1:
-                                        alpha_j = -1
-                                    else:
-                                        break_j = True
-
-                                # Got to extreme for i
-                                if j == 0:
-                                    if alpha_i = 1:
-                                        alpha_i = -1
-                                    else:
-                                        break_i = True
-
-                    # Updating k
-                    if break_k: break
-                # Updating j
-                j += alpha_j
-                if break_j: break
-            # Updating i
-            i += alpha_i
-            if break_i: break
-
-    # Keep track of the number of connections for each node
-    n_connections = np.zeros(total_particles)
-
-    # For each node, look for the three closest particles so that each node only has three connections
-    for index_0 in range(total_particles):
-        # Compute the distance of the current particle to all the others
-        distances = np.linalg.norm(positions - positions[index_0])
-
-        # Generate indexes, to easily keep track of the distance
-        idxs = np.arange(total_particles)
-
-        # Delete the distance to itself
-        idxs      = np.delete(idxs,      index_0)
-        distances = np.delete(distances, index_0)
-
-        # Generate
-
-        # Obtain the indexes of three closest ones wrt distances
-        idx_min = np.argmin(distances)[:3]
-
-        # Obtain corresponding distances and indexes wrt nodes
-        idxs      = idxs[idx_min]
-        distances = distances[idx_min]
-
-        for
-
-
-
-
+    # Convert to torch tensors and return
     nodes = torch.tensor(nodes, dtype=torch.float)
     edges = torch.tensor(edges, dtype=torch.long)
     attributes = torch.tensor(attributes, dtype=torch.float)
     return nodes, edges, attributes
-
+'''
 
 def standardize_dataset(dataset, labels):
     """Stardizes a given dataset (both nodes features and edge attributes).
@@ -202,22 +250,22 @@ def standardize_dataset(dataset, labels):
     # Compute means and standard deviations
 
     target_list = torch.tensor([])
-    edge_list = torch.tensor([])
+    edge_list   = torch.tensor([])
 
     for data in dataset:
         target_list = torch.cat((target_list, data.y), 0)
-        edge_list = torch.cat((edge_list, data.edge_attr), 0)
+        edge_list   = torch.cat((edge_list, data.edge_attr), 0)
 
     scale = 1e0
 
     target_mean = torch.mean(target_list)
-    target_std = torch.std(target_list)
+    target_std  = torch.std(target_list)
 
     edge_mean = torch.mean(edge_list)
-    edge_std = torch.std(edge_list)
+    edge_std  = torch.std(edge_list)
 
     target_factor = target_std / scale
-    edge_factor = edge_std / scale
+    edge_factor   = edge_std / scale
 
     # Update normalized values into the database
 
