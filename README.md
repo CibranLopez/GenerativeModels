@@ -6,15 +6,14 @@ The core technology behind this framework is based on a graph-like representatio
 
 This technology is suitable for different applications: from discovering improved ionic conductors beyond current databases to generating molecules for efficient water splitting.
 
-### Features
+## Features
 
 - Generation of new crystal materials beyond the limitations of existing databases
-- Optimization of arbitrary targets such as conductivity, absorption, and more
+- Optimization of arbitrary targets such as conductivity, light absorption, and more
 - Evaluation of thermodynamic stability using the convex-hull approach
 - Graph-based representation of data for efficient modeling
 - Denoising process utilizing convolutional graph neural networks
 - High stability and reliability of generated crystals
-- Public domain usage
 
 Please be aware that the code is under active development, bug reports are welcomed in the GitHub issues!
 
