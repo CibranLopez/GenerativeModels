@@ -1,10 +1,10 @@
 import numpy               as np
 import matplotlib.pyplot   as plt
-import re                  as re
-import torch               as torch
 import torch.nn.functional as F
-import sys                 as sys
 import torch.nn            as nn
+import torch
+import re
+import sys
 import yaml
 
 from os                   import mkdir, path
@@ -206,6 +206,7 @@ def get_edges_in_box(nodes, positions):
     edges  # Transposing
     attributes = np.concatenate(attributes)  # Just distance for the previous pairs of links
     return edges, attributes
+
 
 def graph_POSCAR_encoding(cell, composition, concentration, positions, L):
     """Generates a graph parameters from a POSCAR.
@@ -448,7 +449,7 @@ def denoising_step(graph_t, epsilon, t, n_denoising_steps):
 
     # Compute alpha_t
     alpha_t = get_alpha_t(t, n_denoising_steps)
-    print(graph_0, epsilon)
+
     # Backard pass
     graph_0.x         = graph_0.x         / torch.sqrt(alpha_t) - torch.sqrt((1 - alpha_t) / alpha_t) * epsilon.x
     graph_0.edge_attr = graph_0.edge_attr / torch.sqrt(alpha_t) - torch.sqrt((1 - alpha_t) / alpha_t) * epsilon.edge_attr
@@ -509,3 +510,55 @@ class eGCNN(nn.Module):
         x = self.linear2(x)
         x = x.relu()
         return x
+
+
+def discretize_graph(graph):
+    """Get graph with closests node embedding to real atoms.
+
+    Args:
+        graph (): initial (predicted) graph structure, with continuous distribution of data.
+
+    Returns:
+        new_graph (): closest graph structure with valid node features (according to the pediodic table).
+    """
+
+    # Clone de graph
+    new_graph = graph.clone()
+
+    # Load and detach embeddings for the graph
+    data_embeddings = new_graph.x.detach()
+
+    # Loading dictionary of available embeddings for atoms
+    available_embeddings = {}
+    with open('../VASP/atomic_masses.dat', 'r') as atomic_masses_file:
+        for line in atomic_masses_file:
+            (key, mass, charge, electronegativity, ionization_energy) = line.split()
+
+            # Check if some information is missing
+            if ((mass              == 'None') or
+                (charge            == 'None') or
+                (electronegativity == 'None') or
+                (ionization_energy == 'None')):
+                continue
+
+            # Add it to the library
+            available_embeddings[key] = np.array([mass, charge, electronegativity, ionization_energy], dtype=float)
+
+    # Load available embeddings for atoms
+    with open('atomic_masses.dat', 'r') as file:
+        available_embeddings = file.readlines()
+
+    # Get most similar atoms for each graph node
+    for i in range(new_graph.num_nodes):
+        # Load old embedding
+        old_embedding = new_graph.x[i].detach().cpu().numpy()
+
+        # Get index
+        idx = np.argmin(available_embeddings - old_embedding)
+
+        # Get atom embeddings
+        new_embeddings = available_embeddings[idx]
+
+        # Replace embeddings
+        new_graph.x[i] = new_embeddings
+    return new_graph
