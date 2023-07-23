@@ -448,13 +448,10 @@ def denoising_step(graph_t, epsilon, t, n_denoising_steps):
 
     # Compute alpha_t
     alpha_t = get_alpha_t(t, n_denoising_steps)
-
-    print(epsilon)
-
+    print(graph_0, epsilon)
     # Backard pass
-    graph_0.x = graph_0.x / torch.sqrt(alpha_t) - torch.sqrt((1 - alpha_t) / alpha_t) * epsilon.x
-    graph_0.edge_attr = graph_0.edge_attr / torch.sqrt(alpha_t) - torch.sqrt(
-        (1 - alpha_t) / alpha_t) * epsilon.edge_attr
+    graph_0.x         = graph_0.x         / torch.sqrt(alpha_t) - torch.sqrt((1 - alpha_t) / alpha_t) * epsilon.x
+    graph_0.edge_attr = graph_0.edge_attr / torch.sqrt(alpha_t) - torch.sqrt((1 - alpha_t) / alpha_t) * epsilon.edge_attr
     return graph_0
 
 
@@ -469,22 +466,19 @@ class nGCNN(torch.nn.Module):
         torch.manual_seed(12345)
 
         # Define graph convolution layers
-        self.conv1 = GraphConv(features_channels, 512)
-        self.conv2 = GraphConv(512, 512)
-
-        # Define linear layers
-        self.linconv = Linear(512, 16)
-        self.lin = Linear(16, 1)
+        self.conv1 = GraphConv(features_channels, 64)  # Introducing node features
+        self.conv2 = GraphConv(64, 64)
+        self.conv3 = GraphConv(64, features_channels)  # Predicting node features
 
         self.pdropout = pdropout
 
     def forward(self, x, edge_index, edge_attr):
-        ## CONVOLUTION
-
         # Apply graph convolution with ReLU activation function
         x = self.conv1(x, edge_index, edge_attr)
         x = x.relu()
         x = self.conv2(x, edge_index, edge_attr)
+        x = x.relu()
+        x = self.conv3(x, edge_index, edge_attr)
         return x
 
 
@@ -495,8 +489,8 @@ class eGCNN(nn.Module):
     def __init__(self, features_channels, pdropout):
         super(eGCNN, self).__init__()
 
-        self.linear1 = Linear(features_channels, 32)
-        self.linear2 = Linear(32, features_channels)
+        self.linear1 = Linear(features_channels, 32)  # Introducing node features
+        self.linear2 = Linear(32, 1)  # Predicting one single weight
 
         self.pdropout = pdropout
 
