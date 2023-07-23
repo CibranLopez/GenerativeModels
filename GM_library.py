@@ -7,10 +7,11 @@ import sys                 as sys
 import torch.nn            as nn
 import yaml
 
-from os                 import mkdir, path
-from torch.nn           import Linear
-from torch_geometric.nn import GCNConv, GraphConv
-from torch_geometric.nn import global_mean_pool
+from os                   import mkdir, path
+from torch_geometric.data import Data
+from torch.nn             import Linear
+from torch_geometric.nn   import GCNConv, GraphConv
+from torch_geometric.nn   import global_mean_pool
 
 # Checking if pytorch can run in GPU, else CPU
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -36,7 +37,7 @@ def get_atoms_in_box(particle_types, composition, cell, atomic_masses, charges, 
     # Getting box dimensions
     Lx, Ly, Lz = L
 
-    print('Starting loop')
+    #print('Starting loop')
 
     # Getting all nodes in the supercell
     all_nodes     = []
@@ -58,7 +59,7 @@ def get_atoms_in_box(particle_types, composition, cell, atomic_masses, charges, 
         # Get the initial position
         position_0 = positions[idx]
 
-        print(f'Particle {idx} of type {species_name}')
+        #print(f'Particle {idx} of type {species_name}')
 
         # Get all images of particle_0 inside the intended box
         distance_i = None  # So first time it tries to get closer to the box
@@ -82,12 +83,12 @@ def get_atoms_in_box(particle_types, composition, cell, atomic_masses, charges, 
                     # Converting to cartesian distances
                     position_cartesian = np.dot(position, cell)
 
-                    print()
-                    print(f'[i, j, k] = {i, j, k} at {position_cartesian}')
+                    #print()
+                    #print(f'[i, j, k] = {i, j, k} at {position_cartesian}')
 
                     # If the cartesian coordinates belong to the imposed box, it is added to the list
                     if np.all(position_cartesian >= 0) and np.all(position_cartesian < [Lx, Ly, Lz]):
-                        print('Verified: into the box')
+                        #print('Verified: into the box')
                         all_nodes.append(node)
                         all_positions.append(position_cartesian)
                         distance_k = 0
@@ -98,61 +99,61 @@ def get_atoms_in_box(particle_types, composition, cell, atomic_masses, charges, 
                         distancez = np.min([np.abs(position_cartesian[2]), np.abs(position_cartesian[2] - Lz)])
                         new_distance = distancex + distancey + distancez
 
-                        print(f'Not verified: from {distance_k} to {new_distance}')
+                        #print(f'Not verified: from {distance_k} to {new_distance}')
 
                         # If new distance is smaller than before or no initialized, k advances in alpha_k direction
                         # Else, we change direction or start again
                         if (distance_k is None) or (new_distance < distance_k):
-                            print('Continue')
+                            #print('Continue')
                             distance_k = new_distance
                             k += alpha_k
                         else:
-                            print('Exit')
+                            #print('Exit')
                             distance_k = None  # Initilizing it agains
 
                             # If alpha_k is negative, k-search is finished; else, alpha_k is negative and it starts in zero
                             if alpha_k == 1:
-                                print('Going backward')
+                                #print('Going backward')
                                 alpha_k = -1
                                 k = -1
                             else:
-                                print('Breaking k')
+                                #print('Breaking k')
                                 # Got to extreme for k
                                 break_k = True  # Which puts k = 0 and alpha_k = 1
 
                                 if (distance_j is None) or (new_distance < distance_j):
-                                    print('Continue')
+                                    #print('Continue')
                                     distance_j = new_distance
                                     j += alpha_j
                                 else:
-                                    print('Exit')
+                                    #print('Exit')
                                     distance_j = None  # Initilizing it agains
 
                                     # If alpha_j is negative, j-search is finished; else, alpha_j is negative and it starts in zero
                                     if alpha_j == 1:
-                                        print('Going backward')
+                                        #print('Going backward')
                                         alpha_j = -1
                                         j = -1
                                     else:
-                                        print('Breaking j')
+                                        #print('Breaking j')
                                         # Got to extreme for j
                                         break_j = True  # Which puts j = 0 and alpha_j = 1
 
                                         if (distance_i is None) or (new_distance < distance_i):
-                                            print('Continue')
+                                            #print('Continue')
                                             distance_i = new_distance
                                             i += alpha_i
                                         else:
-                                            print('Exit')
+                                            #print('Exit')
                                             distance_i = None  # Initilizing it agains
 
                                             # If alpha_i is negative, i-search is finished; else, alpha_i is negative and it starts in zero
                                             if alpha_i == 1:
-                                                print('Going backward')
+                                                #print('Going backward')
                                                 alpha_i = -1
                                                 i = -1
                                             else:
-                                                print('Breaking i')
+                                                #print('Breaking i')
                                                 # Got to extreme for i
                                                 break_i = True  # Which puts i = 0 and alpha_i = 1
                     # Updating k
@@ -197,11 +198,12 @@ def get_edges_in_box(nodes, positions):
         distances = np.delete(distances, index_0)
 
         # Add all edges
-        edges.append([np.ones(len(idxs)) * index_0, idxs])  # This list is reversed !!!
+        edges.append([np.ones(len(idxs)) * index_0, idxs])
         attributes.append(distances)
 
     # Concatenating
     edges      = np.concatenate(edges, axis=1)  # Maintaining the order
+    edges  # Transposing
     attributes = np.concatenate(attributes)  # Just distance for the previous pairs of links
     return edges, attributes
 
@@ -250,8 +252,7 @@ def graph_POSCAR_encoding(cell, composition, concentration, positions, L):
         positions[positions > 0.5] -= 1
     while np.any(positions < 0.5):
         positions[positions < 0.5] += 1
-    return particle_types, atomic_masses, charges, electronegativities, ionization_energies
-'''
+
     # Load all nodes and respective positions in the box
     all_nodes, all_positions = get_atoms_in_box(particle_types,
                                                 composition,
@@ -264,14 +265,14 @@ def graph_POSCAR_encoding(cell, composition, concentration, positions, L):
                                                 L)
 
     # Get edges and attributes for the corresponding nodes
-    edges, attributes = get_edges_in_box(nodes, all_positions)
+    edges, attributes = get_edges_in_box(all_nodes, all_positions)
 
     # Convert to torch tensors and return
-    nodes = torch.tensor(nodes, dtype=torch.float)
-    edges = torch.tensor(edges, dtype=torch.long)
+    nodes      = torch.tensor(all_nodes,  dtype=torch.float)
+    edges      = torch.tensor(edges,      dtype=torch.long)
     attributes = torch.tensor(attributes, dtype=torch.float)
     return nodes, edges, attributes
-'''
+
 
 def standardize_dataset(dataset, labels):
     """Stardizes a given dataset (both nodes features and edge attributes).
@@ -379,7 +380,7 @@ def get_random_graph(n_nodes, n_features, in_edge_index=None, n_edges=None):
     x = torch.randn(n_nodes, n_features)
 
     # Generate random edge attributes
-    edge_attr = torch.randn(n_edges, 1)
+    edge_attr = torch.randn(n_edges)
 
     # Define graph with generated inputs
     graph = Data(x=x, edge_index=edge_index, edge_attr=edge_attr)
@@ -409,7 +410,7 @@ def diffusion_step(graph_0, t, n_diffusing_steps):
     alpha_t = get_alpha_t(t, n_diffusing_steps)
 
     # Forward pass
-    graph_t.x = torch.sqrt(alpha_t) * graph_t.x + torch.sqrt(1 - alpha_t) * epsilon.x
+    graph_t.x         = torch.sqrt(alpha_t) * graph_t.x         + torch.sqrt(1 - alpha_t) * epsilon.x
     graph_t.edge_attr = torch.sqrt(alpha_t) * graph_t.edge_attr + torch.sqrt(1 - alpha_t) * epsilon.edge_attr
     return graph_t
 
@@ -448,6 +449,8 @@ def denoising_step(graph_t, epsilon, t, n_denoising_steps):
     # Compute alpha_t
     alpha_t = get_alpha_t(t, n_denoising_steps)
 
+    print(epsilon)
+
     # Backard pass
     graph_0.x = graph_0.x / torch.sqrt(alpha_t) - torch.sqrt((1 - alpha_t) / alpha_t) * epsilon.x
     graph_0.edge_attr = graph_0.edge_attr / torch.sqrt(alpha_t) - torch.sqrt(
@@ -475,7 +478,7 @@ class nGCNN(torch.nn.Module):
 
         self.pdropout = pdropout
 
-    def forward(self, x, edge_index, edge_attr, batch):
+    def forward(self, x, edge_index, edge_attr):
         ## CONVOLUTION
 
         # Apply graph convolution with ReLU activation function
