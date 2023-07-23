@@ -36,6 +36,8 @@ def get_atoms_in_box(particle_types, composition, cell, atomic_masses, charges, 
     # Getting box dimensions
     Lx, Ly, Lz = L
 
+    print('Starting loop')
+
     # Getting all nodes in the supercell
     all_nodes     = []
     all_positions = []
@@ -56,18 +58,22 @@ def get_atoms_in_box(particle_types, composition, cell, atomic_masses, charges, 
         # Get the initial position
         position_0 = positions[idx]
 
+        print(f'Particle {idx} of type {species_name}')
+
         # Get all images of particle_0 inside the intended box
-        alpha_i = 1
-        alpha_j = 1
-        alpha_k = 1
+        distance_i = None  # So first time it tries to get closer to the box
+        distance_j = None
+        distance_k = None
         i = 0
-        distance = None  # So first time it tries to get closer to the box
+        alpha_i = 1
         break_i = False
         while True:
             j = 0
+            alpha_j = 1
             break_j = False
             while True:
                 k = 0
+                alpha_k = 1
                 break_k = False
                 while True:
                     # Moving to the corresponding image
@@ -76,48 +82,79 @@ def get_atoms_in_box(particle_types, composition, cell, atomic_masses, charges, 
                     # Converting to cartesian distances
                     position_cartesian = np.dot(position, cell)
 
+                    print()
+                    print(f'[i, j, k] = {i, j, k} at {position_cartesian}')
+
                     # If the cartesian coordinates belong to the imposed box, it is added to the list
                     if np.all(position_cartesian >= 0) and np.all(position_cartesian < [Lx, Ly, Lz]):
+                        print('Verified: into the box')
                         all_nodes.append(node)
                         all_positions.append(position_cartesian)
-                        distance = 0
+                        distance_k = 0
+                        k += alpha_k
                     else:
                         distancex = np.min([np.abs(position_cartesian[0]), np.abs(position_cartesian[0] - Lx)])
                         distancey = np.min([np.abs(position_cartesian[1]), np.abs(position_cartesian[1] - Ly)])
                         distancez = np.min([np.abs(position_cartesian[2]), np.abs(position_cartesian[2] - Lz)])
                         new_distance = distancex + distancey + distancez
 
+                        print(f'Not verified: from {distance_k} to {new_distance}')
+
                         # If new distance is smaller than before or no initialized, k advances in alpha_k direction
                         # Else, we change direction or start again
-                        if (distance is None) or (new_distance < distance):
-                            distance = new_distance
+                        if (distance_k is None) or (new_distance < distance_k):
+                            print('Continue')
+                            distance_k = new_distance
                             k += alpha_k
                         else:
-                            distance = None  # Initilizing it agains
+                            print('Exit')
+                            distance_k = None  # Initilizing it agains
 
                             # If alpha_k is negative, k-search is finished; else, alpha_k is negative and it starts in zero
                             if alpha_k == 1:
+                                print('Going backward')
                                 alpha_k = -1
                                 k = -1
                             else:
+                                print('Breaking k')
                                 # Got to extreme for k
-                                alpha_k = 1
-                                break_k = True
+                                break_k = True  # Which puts k = 0 and alpha_k = 1
 
-                                # Got to extreme for j
-                                if k == 0:
+                                if (distance_j is None) or (new_distance < distance_j):
+                                    print('Continue')
+                                    distance_j = new_distance
+                                    j += alpha_j
+                                else:
+                                    print('Exit')
+                                    distance_j = None  # Initilizing it agains
+
+                                    # If alpha_j is negative, j-search is finished; else, alpha_j is negative and it starts in zero
                                     if alpha_j == 1:
+                                        print('Going backward')
                                         alpha_j = -1
+                                        j = -1
                                     else:
-                                        break_j = True
+                                        print('Breaking j')
+                                        # Got to extreme for j
+                                        break_j = True  # Which puts j = 0 and alpha_j = 1
 
-                                # Got to extreme for i
-                                if j == 0:
-                                    if alpha_i == 1:
-                                        alpha_i = -1
-                                    else:
-                                        break_i = True
+                                        if (distance_i is None) or (new_distance < distance_i):
+                                            print('Continue')
+                                            distance_i = new_distance
+                                            i += alpha_i
+                                        else:
+                                            print('Exit')
+                                            distance_i = None  # Initilizing it agains
 
+                                            # If alpha_i is negative, i-search is finished; else, alpha_i is negative and it starts in zero
+                                            if alpha_i == 1:
+                                                print('Going backward')
+                                                alpha_i = -1
+                                                i = -1
+                                            else:
+                                                print('Breaking i')
+                                                # Got to extreme for i
+                                                break_i = True  # Which puts i = 0 and alpha_i = 1
                     # Updating k
                     if break_k: break
                 # Updating j
@@ -150,7 +187,7 @@ def get_edges_in_box(nodes, positions):
     attributes = []
     for index_0 in range(total_particles):
         # Compute the distance of the current particle to all the others
-        distances = np.linalg.norm(positions - positions[index_0])
+        distances = np.linalg.norm(positions - positions[index_0], axis=1)
 
         # Generate indexes, to easily keep track of the distance
         idxs = np.arange(total_particles)
@@ -162,6 +199,10 @@ def get_edges_in_box(nodes, positions):
         # Add all edges
         edges.append([np.ones(len(idxs)) * index_0, idxs])  # This list is reversed !!!
         attributes.append(distances)
+
+    # Concatenating
+    edges      = np.concatenate(edges, axis=1)  # Maintaining the order
+    attributes = np.concatenate(attributes)  # Just distance for the previous pairs of links
     return edges, attributes
 
 def graph_POSCAR_encoding(cell, composition, concentration, positions, L):
