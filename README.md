@@ -2,7 +2,9 @@
 
 This project introduces a novel framework for generating new crystal materials using equivariant diffusion models. The framework offers a powerful approach to surpass the limitations of existing databases by maximizing arbitrary targets such as conductivity, absorption, and more. The generated crystals demonstrate remarkable thermodynamic stability, compared against the Materials Project database, utilizing the convex-hull approach. 
 
-The core technology behind this framework is based on a graph-like representation of data, where the diffusion process is achieved through the use of Markov chains. The denoising aspect of the model is implemented using convolutional graph neural networks, ensuring high-quality results.
+The core technology behind this framework is based on a graph-like representation of data, where the diffusion process is achieved through the use of Markov chains. The denoising aspect of the model is implemented using convolutional graph neural networks, ensuring high-quality results, with which the noise of graphs is predicted.
+
+This technology is suitable for different applications: from discovering improved ionic conductors beyond current databases to generating molecules for efficient water splitting.
 
 ### Features
 
@@ -28,7 +30,7 @@ pip3 install -r requirements.txt
 
 ## Execution
 
----
+An user-friendly jupyter notebook has been developed, which can be run locally with pytorch dependencies. It generates a graph-like database (from the Materials Project database) and trains the generative model to better reproduce those materials and enhance a desired target.
 
 ## Authors
 
