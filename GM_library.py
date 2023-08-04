@@ -182,28 +182,27 @@ def get_edges_in_box(nodes, positions):
 
     # Get total particles in the box
     total_particles = len(nodes)
-
+    
+    # Generate indexes, to easily keep track of the distance
+    idxs = np.arange(total_particles)
+    
     # For each node, look for the three closest particles so that each node only has three connections
     edges = []
     attributes = []
-    for index_0 in range(total_particles):
+    for index_0 in range(total_particles - 1):
         # Compute the distance of the current particle to all the others
         distances = np.linalg.norm(positions - positions[index_0], axis=1)
 
-        # Generate indexes, to easily keep track of the distance
-        idxs = np.arange(total_particles)
-
-        # Delete the distance to itself
-        idxs = np.delete(idxs, index_0)
-        distances = np.delete(distances, index_0)
+        # Delete distances above the current index (avoiding repeated distances)
+        temp_idxs = idxs[index_0:]
+        distances = distances[index_0:]
 
         # Add all edges
-        edges.append([np.ones(len(idxs)) * index_0, idxs])
+        edges.append([np.ones(len(temp_idxs)) * index_0, temp_idxs])
         attributes.append(distances)
 
     # Concatenating
     edges      = np.concatenate(edges, axis=1)  # Maintaining the order
-    edges  # Transposing
     attributes = np.concatenate(attributes)  # Just distance for the previous pairs of links
     return edges, attributes
 
@@ -352,7 +351,7 @@ def get_alpha_t(t, T, s=1e-2):
     return torch.tensor((1 - 2 * s) * (1 - (t / T) ** 2) + s)
 
 
-def get_random_graph(n_nodes, n_features, in_edge_index=None, n_edges=None):
+def get_random_graph(n_nodes, n_features, in_edge_index=None):
     """Generates a random graph with specified number of nodes and features, and attributes. It is assumed
     that all parameters are normally distributed N(0, 1).
 
@@ -360,26 +359,39 @@ def get_random_graph(n_nodes, n_features, in_edge_index=None, n_edges=None):
         n_nodes       (int):   Number of nodes.
         n_features    (int):   Number of features for each node.
         in_edge_index (array): Positions of high-symmetry points in k-space (if None, they are randomized).
-        n_edges       (int):   Number of edges, if edge_index is randomized (if None, it is randomized).
 
     Returns:
         graph (torch_geometric.data.data.Data): Graph structure with random node features and edge attributes.
     """
-
+    
     if in_edge_index is None:  # Randomize edge indexes
-        if n_edges is None:  # Randomize number of edges
-            n_edges = torch.randint(low=50, high=101, size=(1,)).item()
-        edge_index = torch.randn(2, n_edges)
+        # Randomize number of edges
+        edge_index = []
+        
+        # Generate indexes, to easily keep track of the distance
+        idxs = np.arange(n_nodes)
+        for index_0 in range(n_nodes - 1):
+            # Delete distances above the current index (avoiding repeated distances)
+            temp_idxs = idxs[index_0:]
+
+            # Add all edges
+            edge_index.append([np.ones(len(temp_idxs)) * index_0, temp_idxs])
+        
+        # Concatenating
+        edge_index = np.concatenate(edge_index, axis=1)  # Maintaining the order
+        
+        # Convert to torch tensor
+        edge_index = torch.tensor(edge_index, dtype=torch.long)
     else:
         # Clone edge indexes
         edge_index = torch.clone(in_edge_index)
 
-    # Get number of edges
-    n_edges = torch.Tensor.size(edge_index)[1]
-
     # Generate random node features
     x = torch.randn(n_nodes, n_features)
 
+    # Get number of edges
+    n_edges = torch.Tensor.size(edge_index)[1]
+    
     # Generate random edge attributes
     edge_attr = torch.randn(n_edges)
 
