@@ -524,15 +524,126 @@ class eGCNN(nn.Module):
         return x
 
 
+def find_closest_key(dictionary, target_array):
+    """
+    Find the key in the dictionary that corresponds to the array closest to the target array.
+
+    Parameters:
+        dictionary   (dict):          A dictionary where keys are associated with arrays.
+        target_array (numpy.ndarray): The target array for comparison.
+
+    Returns:
+        str: The key corresponding to the closest array in the dictionary.
+    """
+    
+    closest_key = None
+    closest_distance = float('inf')
+
+    # Iterate through the dictionary
+    for key, array in dictionary.items():
+        # Calculate the Euclidean distance between the current array and target array
+        distance = np.linalg.norm(array, target_array)
+        
+        # Update the closest key and distance if the current distance is smaller
+        if distance < closest_distance:
+            closest_distance = distance
+            closest_key = key
+
+    return closest_key
+
+
 def discretize_graph(graph):
+    """
+    Convert the graph's continuous node embeddings to the closest valid embeddings based on the periodic table.
+
+    Args:
+        graph (torch_geometric.data.Data): The initial graph structure with continuous node embeddings.
+
+    Returns:
+        new_graph (torch_geometric.data.Data): The modified graph with closest valid node embeddings based on the periodic table.
+    """
+
+    # Clone the input graph to preserve the original structure
+    new_graph = graph.clone()
+
+    # Detach embeddings for the graph nodes
+    data_embeddings = new_graph.x.detach()
+
+    # Load the dictionary of available embeddings for atoms
+    available_embeddings = {}
+    with open('../VASP/atomic_masses.dat', 'r') as atomic_masses_file:
+        for line in atomic_masses_file:
+            (key, mass, charge, electronegativity, ionization_energy) = line.split()
+
+            # Check if some information is missing
+            if ((mass              == 'None') or
+                (charge            == 'None') or
+                (electronegativity == 'None') or
+                (ionization_energy == 'None')):
+                continue
+
+            # Add valid atom embeddings to the library
+            available_embeddings[key] = np.array([mass, charge, electronegativity, ionization_energy], dtype=float)
+
+    # Iterate through each graph node to update embeddings
+    for i in range(new_graph.num_nodes):
+        # Load the original embedding for the current node
+        old_embedding = new_graph.x[i].detach().cpu().numpy()
+
+        # Find the closest key (atom) from available_embeddings for the old_embedding
+        key = find_closest_key(available_embeddings, old_embedding)
+
+        # Get the valid atom embeddings corresponding to the closest key
+        new_embeddings = available_embeddings[key]
+
+        # Update the embeddings for the current node in the new graph
+        new_graph.x[i] = torch.tensor(new_embeddings)
+    
+    # Calculate the loss for node features and edge attributes
+    node_loss, edge_loss = GML.get_graph_losses(graph, new_graph)
+    
+    # Accumulate the total training loss
+    loss = node_loss + edge_loss
+    train_loss = loss.item()
+    return new_graph
+
+
+def composition_concentration_from_keys(keys):
+    """
+    Calculate composition and concentration from a list of keys.
+
+    Args:
+        keys (list): A list of keys representing some data.
+
+    Returns:
+        composition   (list): A list of composition values.
+        concentration (list): A list of concentration values.
+    """
+    
+    # Get unique values and their frequencies from the list of keys
+    unique_values = np.unique(keys, return_counts=True)
+    
+    # Extract composition and concentration from the unique values
+    composition   = unique_values[0].tolist()
+    concentration = unique_values[1].tolist()
+    
+    return composition, concentration
+
+
+def POSCAR_graph_encoding(graph, POSCAR_name=None):
     """Get graph with closests node embedding to real atoms.
 
     Args:
         graph (): initial (predicted) graph structure, with continuous distribution of data.
+        
 
     Returns:
         new_graph (): closest graph structure with valid node features (according to the pediodic table).
     """
+    
+    # Get name for the first line of the POSCAR
+    if POSCAR_name is None:
+        POSCAR_name = 'POSCAR from GenerativeModels'
 
     # Clone de graph
     new_graph = graph.clone()
@@ -556,21 +667,138 @@ def discretize_graph(graph):
             # Add it to the library
             available_embeddings[key] = np.array([mass, charge, electronegativity, ionization_energy], dtype=float)
 
-    # Load available embeddings for atoms
-    with open('atomic_masses.dat', 'r') as file:
-        available_embeddings = file.readlines()
-
     # Get most similar atoms for each graph node
+    keys = []
     for i in range(new_graph.num_nodes):
         # Load old embedding
         old_embedding = new_graph.x[i].detach().cpu().numpy()
 
-        # Get index
-        idx = np.argmin(available_embeddings - old_embedding)
+        # Get alement key
+        key = find_closest_key(available_embeddings, old_embedding)
+        
+        # Append new key, following the previous order
+        keys.append(key)
 
         # Get atom embeddings
-        new_embeddings = available_embeddings[idx]
+        new_embeddings = available_embeddings[key]
 
         # Replace embeddings
-        new_graph.x[i] = new_embeddings
-    return new_graph
+    
+    POSCAR_composition, POSCAR_concentration = composition_concentration_from_keys(keys)
+
+    return POSCAR_file
+
+
+def get_graph_losses(graph1, graph2):
+    """
+    Calculate loss values for node features and edge attributes between two graphs.
+
+    Args:
+        graph1 (torch_geometric.data.Data): The first input graph.
+        graph2 (torch_geometric.data.Data): The second input graph.
+
+    Returns:
+        node_loss (torch.Tensor): Loss value for node features between the two graphs.
+        edge_loss (torch.Tensor): Loss value for edge attributes between the two graphs.
+    """
+
+    # Initialize loss criterions for nodes and edges
+    node_criterion = nn.MSELoss()
+    edge_criterion = nn.MSELoss()
+
+    # Calculate the loss for node features by comparing the node attribute tensors
+    node_loss = node_criterion(graph1.x,
+                               graph2.x)
+
+    # Calculate the loss for edge attributes by comparing the edge attribute tensors
+    edge_loss = edge_criterion(graph1.edge_attr,
+                               graph2.edge_attr)
+
+    return node_loss, edge_loss
+
+
+def allocate_atom_n(d_01, x2, y2, d_0n, d_1n, d_2n):
+    """
+    Calculate the coordinates of atom 'n' based on geometric constraints.
+
+    Args:
+        d_01 (float): Distance between atoms '0' and '1'.
+        x2 (float): x-coordinate of atom '2'.
+        y2 (float): y-coordinate of atom '2'.
+        d_0n (float): Distance between atoms '0' and 'n'.
+        d_1n (float): Distance between atoms '1' and 'n'.
+        d_2n (float): Distance between atoms '2' and 'n'.
+
+    Returns:
+        list: A list containing the x, y, and z coordinates of atom 'n'.
+    """
+    
+    # Calculate x-coordinate of atom 'n'
+    xn = (d_01**2 + d_0n**2 - d_1n**2) / (2 * d_01)
+    
+    # Calculate y-coordinate of atom 'n'
+    yn = (d_1n**2 - d_2n**2 - d_01**2 + 2 * xn * d_01 + x_0**2 - 2 * xn * x2 + y2**2) / (2 * y2)
+    
+    # Calculate z-coordinate of atom 'n'
+    zn = np.sqrt(d_0n**2 - xn**2 - yn**2)
+    
+    return [xn, yn, zn]
+
+
+def get_distance_attribute(index0, index1, edge_indexes, edge_attributes):
+
+    # Get each row of data independently
+    edge_indexes0 = edge_indexes[0]
+    edge_indexes1 = edge_indexes[1]
+
+    # Iterate over all pairs and select the corresponding distance
+    for i in range(len(edge_indexes0)):
+        # It is considered that we can have [index0, index1] or [index1, index0]
+        condition_direct = ((edge_indexes0[i] == index0) and (edge_indexes1[i] == index1))
+        condition_reverse = ((edge_indexes0[i] == index1) and (edge_indexes1[i] == index0))
+        
+        # Check the conditions
+        if condition_direct or condition_reverse:
+            # If it is fullfilled, the attribute is returned
+            return edge_attributes[i]
+    
+    # If it gets here, there is a problem with the definition of the graph
+    sys.exit('Error: the pair is not linked')
+
+def get_positions(graph):
+
+    # Extract indexes and attributes
+    edge_indexes    = graph.edge_index.detach().cpu().numpy()
+    edge_attributes = graph.edge_attr.detach().cpu().numpy()
+    
+    # Get necessary distances
+    d_01 = get_distance_attribute(0, 1, edge_indexes, edge_attributes)
+    d_02 = get_distance_attribute(0, 2, edge_indexes, edge_attributes)
+    d_12 = get_distance_attribute(1, 2, edge_indexes, edge_attributes)
+    
+    # Reference the first three atoms
+    x2 = (d_01**2 + d_02**2 - d_12**2) / (2 * d_01)
+    y2 = np.sqrt(d_02**2 - x2**2)
+    
+    r0 = [0,    0,  0]
+    r1 = [d_01, 0,  0]
+    r2 = [x2,   y2, 0]
+    
+    positions = [r0, r1, r2]
+    
+    for n in np.arange(3, total_particles):
+        # Get distance for 'n'
+            d_0n = get_distance_attribute(0, n, edge_indexes, edge_attributes)
+            d_1n = get_distance_attribute(1, n, edge_indexes, edge_attributes)
+            d_2n = get_distance_attribute(2, n, edge_indexes, edge_attributes)
+        
+        # Allocate particle 'n'
+        rn = allocate_atom_n(d_01, x2, y2, d_0n, d_1n, d_2n)
+        
+        # Append the new position
+        positions.append(rn)
+    
+    return positions
+    
+    
+    
