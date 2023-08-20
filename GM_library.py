@@ -2,16 +2,18 @@ import numpy               as np
 import matplotlib.pyplot   as plt
 import torch.nn.functional as F
 import torch.nn            as nn
+import networkx            as nx
 import torch
 import re
 import sys
 import yaml
 
-from os                   import mkdir, path
-from torch_geometric.data import Data
-from torch.nn             import Linear
-from torch_geometric.nn   import GCNConv, GraphConv
-from torch_geometric.nn   import global_mean_pool
+from os                            import mkdir, path
+from torch_geometric.data          import Data
+from torch.nn                      import Linear
+from torch_geometric.nn            import GCNConv, GraphConv
+from torch_geometric.nn            import global_mean_pool
+from torch_geometric.utils.convert import to_networkx
 
 # Checking if pytorch can run in GPU, else CPU
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -403,7 +405,7 @@ def get_random_graph(n_nodes, n_features, in_edge_index=None):
         idxs = np.arange(n_nodes)
         for index_0 in range(n_nodes - 1):
             # Delete distances above the current index (avoiding repeated distances)
-            temp_idxs = idxs[index_0:]
+            temp_idxs = idxs[index_0+1:]
 
             # Add all edges
             edge_index.append([np.ones(len(temp_idxs)) * index_0, temp_idxs])
@@ -474,7 +476,23 @@ def diffuse(graph_0, n_diffusing_steps, s=1e-2, plot_steps=False):
 
     graph_t = graph_0.clone()
     for t in range(n_diffusing_steps):
+        # Check if intermediate steps are plotted; then, plot the NetworkX graph
+        if plot_steps:
+            # Convert PyTorch graph to NetworkX graph
+            networkx_graph = to_networkx(graph_t)
+            pos            = nx.spring_layout(networkx_graph)
+            nx.draw(networkx_graph, pos, with_labels=True, node_size=graph_t.x, font_size=10)
+            plt.show()
+        
         graph_t = diffusion_step(graph_t, t, n_diffusing_steps, s)
+    
+    # Check if intermediate steps are plotted; then, plot the NetworkX graph
+    if plot_steps:
+        # Convert PyTorch graph to NetworkX graph
+        networkx_graph = to_networkx(graph_t)
+        pos            = nx.spring_layout(networkx_graph)
+        nx.draw(networkx_graph, pos, with_labels=True, node_size=graph_t.x, font_size=10)
+        plt.show()
     return graph_t
 
 
@@ -490,7 +508,7 @@ def denoise(graph_t, n_denoising_steps, node_model, edge_model, s=1e-2, plot_ste
     Returns:
         graph_0 (torch_geometric.data.Data): Graph with random node features and edge attributes (step t).
     """
-
+    
     graph_0 = graph_t.clone()
     for t in range(n_denoising_steps):
         # Perform a single forward pass for predicting node features
@@ -508,8 +526,24 @@ def denoise(graph_t, n_denoising_steps, node_model, edge_model, s=1e-2, plot_ste
         # Construct noise graph
         noise_graph = Data(x=out_x, edge_index=diffused_graph.edge_index, edge_attr=out_attr.ravel())
         
+        # Check if intermediate steps are plotted; then, plot the NetworkX graph
+        if plot_steps:
+            # Convert PyTorch graph to NetworkX graph
+            networkx_graph = to_networkx(graph_0)
+            pos            = nx.spring_layout(networkx_graph)
+            nx.draw(networkx_graph, pos, with_labels=True, node_size=graph_0.x, font_size=10)
+            plt.show()
+        
         # Denoise the graph with the predicted noise
         graph_0 = denoising_step(graph_0, noise_graph, t, n_denoising_steps, s=s)
+        
+    # Check if intermediate steps are plotted; then, plot the NetworkX graph
+    if plot_steps:
+        # Convert PyTorch graph to NetworkX graph
+        networkx_graph = to_networkx(graph_0)
+        pos            = nx.spring_layout(networkx_graph)
+        nx.draw(networkx_graph, pos, with_labels=True, node_size=graph_0.x, font_size=10)
+        plt.show()
     return graph_0
 
 
