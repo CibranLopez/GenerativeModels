@@ -371,6 +371,8 @@ def revert_standardize_dataset(dataset, parameters):
 
 def get_alpha_t(t, T, s):
     """Defines constant alpha at time-step t, given a parameter s < 0.5 (else alpha increases).
+    
+    \alpha (t) = (1 - 2 s) \left( 1 - \left( \frac{t}{T} \right)^2 \right) + s
 
     Args:
         t (int):   time step (of diffusion or denoising) in which alpha is required.
@@ -381,7 +383,7 @@ def get_alpha_t(t, T, s):
         alpha (float): parameter which controls the velocity of diffusion or denoising.
     """
 
-    return torch.tensor((1 - 2 * s) * (1 - (t / T) ** 2) + s)
+    return torch.tensor((1 - 2 * s) * (1 - (t / T) ** 2) + 2 * s)
 
 
 def get_random_graph(n_nodes, n_features, in_edge_index=None):
@@ -435,6 +437,10 @@ def get_random_graph(n_nodes, n_features, in_edge_index=None):
 
 def diffusion_step(graph_0, t, n_diffusing_steps, s):
     """Performs a forward step of a diffusive, Markov chain.
+    
+    G (t) = \sqrt{\alpha (t)} G (t-1) + \sqrt{1 - \alpha (t)} N (t)
+    
+    with G a graph and N noise.
 
     Args:
         graph_0 (torch_geometric.data.Data): Graph which is to be diffused (step t-1).
@@ -473,9 +479,15 @@ def diffuse(graph_0, n_diffusing_steps, s=1e-2, plot_steps=False):
     Returns:
         graph_t (torch_geometric.data.Data): Graph with random node features and edge attributes (step t).
     """
-
+    
     graph_t = graph_0.clone()
-    for t in range(n_diffusing_steps):
+    
+    # Save all intermediate graphs as well (sanity check)
+    all_graphs = [graph_t]
+    
+    # Define t_steps starting from 1 to n_denoising_steps+1
+    t_steps = np.arange(1, n_diffusing_steps+1)
+    for t in t_steps:
         # Check if intermediate steps are plotted; then, plot the NetworkX graph
         if plot_steps:
             # Convert PyTorch graph to NetworkX graph
@@ -485,6 +497,7 @@ def diffuse(graph_0, n_diffusing_steps, s=1e-2, plot_steps=False):
             plt.show()
         
         graph_t = diffusion_step(graph_t, t, n_diffusing_steps, s)
+        all_graphs.append(graph_t)
     
     # Check if intermediate steps are plotted; then, plot the NetworkX graph
     if plot_steps:
@@ -493,7 +506,7 @@ def diffuse(graph_0, n_diffusing_steps, s=1e-2, plot_steps=False):
         pos            = nx.spring_layout(networkx_graph)
         nx.draw(networkx_graph, pos, with_labels=True, node_size=graph_t.x, font_size=10)
         plt.show()
-    return graph_t
+    return graph_t, all_graphs
 
 
 def denoise(graph_t, n_denoising_steps, node_model, edge_model, s=1e-2, plot_steps=False):
@@ -510,21 +523,27 @@ def denoise(graph_t, n_denoising_steps, node_model, edge_model, s=1e-2, plot_ste
     """
     
     graph_0 = graph_t.clone()
-    for t in range(n_denoising_steps):
+    
+    # Save all intermediate graphs as well (sanity check)
+    all_graphs = [graph_0]
+    
+    # Define t_steps as inverse of the diffuse process
+    t_steps = np.arange(1, n_denoising_steps+1)[::-1]
+    for t in t_steps:
         # Perform a single forward pass for predicting node features
         out_x = node_model(graph_0.x,
                            graph_0.edge_index,
                            graph_0.edge_attr)
         
         # Define x_i and x_j as features of every corresponding pair of nodes (same order than attributes)
-        x_i = diffused_graph.x[graph_0.edge_index[0]]
-        x_j = diffused_graph.x[graph_0.edge_index[1]]
+        x_i = graph_0.x[graph_0.edge_index[0]]
+        x_j = graph_0.x[graph_0.edge_index[1]]
         
         # Perform a single forward pass for predicting edge attributes
         out_attr = edge_model(x_i, x_j)
 
         # Construct noise graph
-        noise_graph = Data(x=out_x, edge_index=diffused_graph.edge_index, edge_attr=out_attr.ravel())
+        noise_graph = Data(x=out_x, edge_index=graph_0.edge_index, edge_attr=out_attr.ravel())
         
         # Check if intermediate steps are plotted; then, plot the NetworkX graph
         if plot_steps:
@@ -536,6 +555,7 @@ def denoise(graph_t, n_denoising_steps, node_model, edge_model, s=1e-2, plot_ste
         
         # Denoise the graph with the predicted noise
         graph_0 = denoising_step(graph_0, noise_graph, t, n_denoising_steps, s=s)
+        all_graphs.append(graph_0)
         
     # Check if intermediate steps are plotted; then, plot the NetworkX graph
     if plot_steps:
@@ -544,7 +564,7 @@ def denoise(graph_t, n_denoising_steps, node_model, edge_model, s=1e-2, plot_ste
         pos            = nx.spring_layout(networkx_graph)
         nx.draw(networkx_graph, pos, with_labels=True, node_size=graph_0.x, font_size=10)
         plt.show()
-    return graph_0
+    return graph_0, all_graphs
 
 
 def denoising_step(graph_t, epsilon, t, n_denoising_steps, s):
