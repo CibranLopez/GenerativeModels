@@ -60,6 +60,8 @@ def get_atoms_in_box(particle_types, composition, cell, atomic_masses, charges, 
 
         # Get the initial position
         position_0 = positions[idx]
+        print('aa')
+        print(position_0)
 
         #print(f'Particle {idx} of type {species_name}')
 
@@ -81,6 +83,8 @@ def get_atoms_in_box(particle_types, composition, cell, atomic_masses, charges, 
                 while True:
                     # Moving to the corresponding image
                     position = position_0 + [i, j, k]
+                    print('')
+                    print([i, j, k])
 
                     # Converting to cartesian distances
                     position_cartesian = np.dot(position, cell)
@@ -89,13 +93,17 @@ def get_atoms_in_box(particle_types, composition, cell, atomic_masses, charges, 
                     #print(f'[i, j, k] = {i, j, k} at {position_cartesian}')
 
                     # If the cartesian coordinates belong to the imposed box, it is added to the list
+                    #print(np.all(position_cartesian >= 0))
+                    #print(np.all(position_cartesian < [Lx, Ly, Lz]))
                     if np.all(position_cartesian >= 0) and np.all(position_cartesian < [Lx, Ly, Lz]):
+                        print(position_cartesian)
                         #print('Verified: into the box')
                         all_nodes.append(node)
                         all_positions.append(position_cartesian)
                         distance_k = 0
                         k += alpha_k
                     else:
+                        print('Hey', position_cartesian)
                         distancex = np.min([np.abs(position_cartesian[0]), np.abs(position_cartesian[0] - Lx)])
                         distancey = np.min([np.abs(position_cartesian[1]), np.abs(position_cartesian[1] - Ly)])
                         distancez = np.min([np.abs(position_cartesian[2]), np.abs(position_cartesian[2] - Lz)])
@@ -161,10 +169,8 @@ def get_atoms_in_box(particle_types, composition, cell, atomic_masses, charges, 
                     # Updating k
                     if break_k: break
                 # Updating j
-                j += alpha_j
                 if break_j: break
             # Updating i
-            i += alpha_i
             if break_i: break
     return all_nodes, all_positions
 
@@ -215,11 +221,11 @@ def graph_POSCAR_encoding(cell, composition, concentration, positions, L):
     It links every particle with the three closest ones within the box, disregarding images.
 
     Args:
-        cell          (3x3 numpy array):       Lattice vectors of the reference POSCAR.
-        composition   (3 numpy str array):     Names of the elements of the material.
-        concentration (3 numpy int array):     Number of each of the previous elements.
-        positions     (Nx3 numpy float array): Direct coordinates of each particle in the primitive cell.
-        L             (3 numpy float array):   Maximum distance in each cartesian direction for describing the material.
+        cell          (3x3 float ndarray): Lattice vectors of the reference POSCAR.
+        composition   (3   str   ndarray): Names of the elements of the material.
+        concentration (3   int   ndarray): Number of each of the previous elements.
+        positions     (Nx3 float ndarray): Direct coordinates of each particle in the primitive cell.
+        L             (3   float ndarray): Maximum distance in each cartesian direction for describing the material.
     Returns:
         nodes      (torch tensor): Generated nodes with corresponding features.
         edges      (torch tensor): Generated connections between nodes.
@@ -250,10 +256,10 @@ def graph_POSCAR_encoding(cell, composition, concentration, positions, L):
 
     # Applying periodic boundary conditions (in reduced coordinates)
     # This is not strictly necessary (all images are being checked eitherway), but it can simplify things
-    while np.any(positions > 0.5):
-        positions[positions > 0.5] -= 1
-    while np.any(positions < 0.5):
-        positions[positions < 0.5] += 1
+    while np.any(positions > 1):
+        positions[positions > 1] -= 1
+    while np.any(positions < 0):
+        positions[positions < 0] += 1
 
     # Load all nodes and respective positions in the box
     all_nodes, all_positions = get_atoms_in_box(particle_types,
@@ -287,16 +293,19 @@ def standardize_dataset(dataset, labels):
         labels  (list): List containing the label of each graph in the dataset.
 
     Returns:
-        dataset    (list): Normalized dataset.
-        parameters (list): Parameters needed to re-scale predicted properties from the dataset.
+        dataset_std (list): Normalized dataset.
+        parameters  (list): Parameters needed to re-scale predicted properties from the dataset.
     """
-
+    
+    # Clone the dataset (using a list comprehension)
+    dataset_std = [graph.clone() for graph in dataset]
+    
     # Compute means and standard deviations
 
     target_list = torch.tensor([])
     edge_list   = torch.tensor([])
 
-    for data in dataset:
+    for data in dataset_std:
         target_list = torch.cat((target_list, data.y), 0)
         edge_list   = torch.cat((edge_list, data.edge_attr), 0)
 
@@ -313,7 +322,7 @@ def standardize_dataset(dataset, labels):
 
     # Update normalized values into the database
 
-    for data in dataset:
+    for data in dataset_std:
         data.y = (data.y - target_mean) / target_factor
         data.edge_attr = (data.edge_attr - edge_mean) / edge_factor
 
@@ -322,20 +331,20 @@ def standardize_dataset(dataset, labels):
     feat_mean = torch.tensor([])
     feat_std = torch.tensor([])
 
-    for feat_index in range(dataset[0].num_node_features):
+    for feat_index in range(dataset_std[0].num_node_features):
         feat_list = torch.tensor([])
 
-        for data in dataset:
+        for data in dataset_std:
             feat_list = torch.cat((feat_list, data.x[:, feat_index]), 0)
 
         feat_mean = torch.cat((feat_mean, torch.tensor([torch.mean(feat_list)])), 0)
         feat_std = torch.cat((feat_std, torch.tensor([torch.std(feat_list)])), 0)
 
-        for data in dataset:
+        for data in dataset_std:
             data.x[:, feat_index] = (data.x[:, feat_index] - feat_mean[feat_index]) * scale / feat_std[feat_index]
 
     parameters = [target_mean, feat_mean, edge_mean, target_std, edge_std, feat_std, scale]
-    return dataset, parameters
+    return dataset_std, parameters
 
 
 def revert_standardize_dataset(dataset, parameters):
@@ -349,24 +358,27 @@ def revert_standardize_dataset(dataset, parameters):
         parameters (list): Parameters needed to re-scale predicted properties from the dataset.
 
     Returns:
-        dataset (list): De-normalized dataset.
+        dataset_rstd (list): De-normalized dataset.
     """
-
+    
+    # Clone the dataset (using a list comprehension)
+    dataset_rstd = [graph.clone() for graph in dataset]
+    
     # Assigning parameters accordingly
     _, feat_mean, edge_mean, _, edge_std, feat_std, scale = parameters
     
     edge_factor = edge_std / scale
 
     # Update normalized values into the database
-    for data in dataset:
+    for data in dataset_rstd:
         data.edge_attr = data.edge_attr * edge_factor + edge_mean
 
     # Same for the node features
-    for feat_index in range(dataset[0].num_node_features):
-        for data in dataset:
+    for feat_index in range(dataset_rstd[0].num_node_features):
+        for data in dataset_rstd:
             data.x[:, feat_index] = data.x[:, feat_index] * feat_std[feat_index] / scale + feat_mean[feat_index]
 
-    return dataset
+    return dataset_rstd
 
 
 def get_alpha_t(t, T, s):
@@ -803,6 +815,9 @@ def POSCAR_graph_encoding(graph, L, POSCAR_name=None, POSCAR_directory='./'):
         [0.0,  L[1], 0.0],
         [0.0,  0.0,  L[2]],
     ]
+    
+    # Check consistency of the graph
+    ...
 
     # Get the position of each atom in direct coordinates
     direct_positions = graph_to_direct_positions(graph, L)
@@ -822,7 +837,7 @@ def POSCAR_graph_encoding(graph, L, POSCAR_name=None, POSCAR_directory='./'):
         POSCAR_file.write('1.0\n')
 
         # Write lattice parameters (assumed to be orthogonal)
-        np.savetxt(POSCAR_file, lattice_vectors, fmt='%.3f', delimiter=' ')
+        np.savetxt(POSCAR_file, lattice_vectors, delimiter=' ')
 
         # Write composition (each different species, previously sorted)
         np.savetxt(POSCAR_file, [POSCAR_composition], fmt='%s', delimiter=' ')
@@ -832,7 +847,7 @@ def POSCAR_graph_encoding(graph, L, POSCAR_name=None, POSCAR_directory='./'):
 
         # Write position in direct form
         POSCAR_file.write('Direct\n')
-        np.savetxt(POSCAR_file, POSCAR_positions, fmt='%.3f', delimiter=' ')
+        np.savetxt(POSCAR_file, POSCAR_positions, delimiter=' ')
 
     return POSCAR_file
 
@@ -888,7 +903,8 @@ def allocate_atom_n(d_01, x2, y2, d_0n, d_1n, d_2n):
     yn = (d_1n**2 - d_2n**2 - d_01**2 + 2 * xn * d_01 + x2**2 - 2 * xn * x2 + y2**2) / (2 * y2)
     
     # Calculate z-coordinate of atom 'n'
-    zn = np.sqrt(d_0n**2 - xn**2 - yn**2)
+    zn_square = d_0n**2 - xn**2 - yn**2
+    zn = np.sqrt(zn_square) if zn_square > 0 else 0
     
     return [xn, yn, zn]
 
@@ -915,15 +931,13 @@ def get_distance_attribute(index0, index1, edge_indexes, edge_attributes):
     mask_reverse = (edge_indexes[0] == index1) & (edge_indexes[1] == index0)
     
     # Check if any edge satisfies the conditions
-    mask = mask_direct | mask_reverse
-    matching_edge_indices = np.where(mask)[0]
+    matching_edge_indices = np.where(mask_direct | mask_reverse)[0]
     
     if len(matching_edge_indices) == 0:
-        sys.exit('Error: the pair is not linked')
+        sys.exit(f'Error: the pair [{index0}, {index1}] is not linked')
     
     # Get the distance attribute from the first matching edge
-    matching_edge_index = matching_edge_indices[0]
-    distance_attribute = edge_attributes[matching_edge_index]
+    distance_attribute = edge_attributes[matching_edge_indices[0]]
     
     return distance_attribute
 
@@ -931,6 +945,7 @@ def get_distance_attribute(index0, index1, edge_indexes, edge_attributes):
 def graph_to_direct_positions(graph, L):
     """
     Calculate the positions of atoms in a molecular graph based on given distances, in direct coordinates.
+    The graph is assumed to be self-consistent (all lenghts to be correct).
 
     Args:
         graph (torch_geometric.data.Data): The input graph containing edge indexes and attributes.
@@ -943,34 +958,35 @@ def graph_to_direct_positions(graph, L):
     edge_indexes    = graph.edge_index.detach().cpu().numpy()
     edge_attributes = graph.edge_attr.detach().cpu().numpy()
 
+    # Define the number of atoms in the graph
+    total_particles = len(graph.x)
+    
+    # Find three indexes for using as reference of the graph
+    index_0, index_1, index_2 = find_three_indexes(edge_indexes, edge_attributes, total_particles)
+    
     # Get necessary distances
-    d_01 = get_distance_attribute(0, 1, edge_indexes, edge_attributes)
-    d_02 = get_distance_attribute(0, 2, edge_indexes, edge_attributes)
-    d_12 = get_distance_attribute(1, 2, edge_indexes, edge_attributes)
+    d_01 = get_distance_attribute(index_0, index_1, edge_indexes, edge_attributes)
+    d_02 = get_distance_attribute(index_0, index_2, edge_indexes, edge_attributes)
+    d_12 = get_distance_attribute(index_1, index_2, edge_indexes, edge_attributes)
 
     # Reference the first three atoms
     x2 = (d_01**2 + d_02**2 - d_12**2) / (2 * d_01)
     y2 = np.sqrt(d_02**2 - x2**2)
-
-    # Initialize positions list with coordinates of the first three atoms
-    cartesian_positions = [
-        [0,    0,  0],
-        [d_01, 0,  0],
-        [x2,   y2, 0]
-    ]
-
-    # Define the number of atoms in the graph
-    total_particles = len(graph.x)
     
-    # Iterate over the remaining atoms (starting from index 3)
-    for n in range(3, total_particles):
-        # Get distances for atom 'n'
-        d_0n = get_distance_attribute(0, n, edge_indexes, edge_attributes)
-        d_1n = get_distance_attribute(1, n, edge_indexes, edge_attributes)
-        d_2n = get_distance_attribute(2, n, edge_indexes, edge_attributes)
-        
-        # Allocate atom 'n' using optimized function
-        rn = allocate_atom_n(d_01, x2, y2, d_0n, d_1n, d_2n)
+    # Iterate over the remaining atoms (positions regarding the graph are preserved)
+    cartesian_positions = []
+    for n in range(total_particles):
+        if   n == index_0: rn = [0,    0,  0]
+        elif n == index_1: rn = [d_01, 0,  0]
+        elif n == index_2: rn = [x2,   y2, 0]
+        else:
+            # Get distances for atom 'n'
+            d_0n = get_distance_attribute(index_0, n, edge_indexes, edge_attributes)
+            d_1n = get_distance_attribute(index_1, n, edge_indexes, edge_attributes)
+            d_2n = get_distance_attribute(index_2, n, edge_indexes, edge_attributes)
+            
+            # Allocate atom 'n' using optimized function
+            rn = allocate_atom_n(d_01, x2, y2, d_0n, d_1n, d_2n)
         
         # Append the new position to the positions list
         cartesian_positions.append(rn)
@@ -1032,3 +1048,49 @@ def get_target_loss(obtained_target, seeked_target):
     
     # If none of the above conditions are met, raise an error
     sys.exit('Error: the seeked target is not valid')
+
+
+def triangle_area(a, b, c):
+    """Compute the area of a triangle.
+    
+    Args:
+        a (float): Lenght of one edge.
+        b (float): Lenght of one edge.
+        c (float): Lenght of one edge.
+    
+    Returns:
+        area (float): Area of the triangle.
+    """
+    
+    # Calculate the semi-perimeter
+    s = (a + b + c) / 2
+    
+    # Calculate the area using Heron's formula
+    area = np.sqrt(s * (s - a) * (s - b) * (s - c))
+    
+    return area
+
+
+def find_three_indexes(edge_indexes, edge_attributes, total_particles, threshold=10):
+    """Finds three nodes which define a triangle of appropiate area.
+    
+    Args:
+        edge_indexes    (array): List of edge indexes.
+        edge_attributes (array): Corresponding list of edge attributes.
+        total_particles (int):   Total number of particles in the graph.
+    
+    Returns:
+        indexes (int): Indexes of the three nodes used as base.
+    """
+    
+    indexes = (0, 0, 0)  # Initialize with dummy values
+    for i in np.arange(total_particles):
+        for j in np.arange(i+1, total_particles):
+            for k in np.arange(j+1, total_particles):
+                d_ij = get_distance_attribute(i, j, edge_indexes, edge_attributes)
+                d_jk = get_distance_attribute(j, k, edge_indexes, edge_attributes)
+                d_ik = get_distance_attribute(i, k, edge_indexes, edge_attributes)
+                
+                d_temp = triangle_area(d_ij, d_jk, d_ik)
+                if d_temp > threshold:
+                    return (i, j, k)
