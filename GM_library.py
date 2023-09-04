@@ -4,9 +4,7 @@ import torch.nn.functional as F
 import torch.nn            as nn
 import networkx            as nx
 import torch
-import re
 import sys
-import yaml
 
 from os                            import mkdir, path
 from torch_geometric.data          import Data
@@ -44,6 +42,8 @@ def get_atoms_in_box(particle_types, composition, cell, atomic_masses, charges, 
     # Getting all nodes in the supercell
     all_nodes     = []
     all_positions = []
+    all_species   = []
+    all_skipped   = []
     for idx in range(len(particle_types)):
         # Get particle type (index of type wrt composition in POSCAR)
         particle_type = particle_types[idx]
@@ -64,22 +64,24 @@ def get_atoms_in_box(particle_types, composition, cell, atomic_masses, charges, 
         print(position_0)
 
         #print(f'Particle {idx} of type {species_name}')
-
         # Get all images of particle_0 inside the intended box
-        distance_i = None  # So first time it tries to get closer to the box
-        distance_j = None
-        distance_k = None
+          # So first time it tries to get closer to the box
+        
+        
         i = 0
         alpha_i = 1
         break_i = False
+        distance_i = None
         while True:
             j = 0
             alpha_j = 1
             break_j = False
+            distance_j = None
             while True:
                 k = 0
                 alpha_k = 1
                 break_k = False
+                distance_k = None
                 while True:
                     # Moving to the corresponding image
                     position = position_0 + [i, j, k]
@@ -90,25 +92,22 @@ def get_atoms_in_box(particle_types, composition, cell, atomic_masses, charges, 
                     position_cartesian = np.dot(position, cell)
 
                     #print()
-                    #print(f'[i, j, k] = {i, j, k} at {position_cartesian}')
 
                     # If the cartesian coordinates belong to the imposed box, it is added to the list
-                    #print(np.all(position_cartesian >= 0))
-                    #print(np.all(position_cartesian < [Lx, Ly, Lz]))
-                    if np.all(position_cartesian >= 0) and np.all(position_cartesian < [Lx, Ly, Lz]):
+                    if np.all(position_cartesian >= 0) and np.all(position_cartesian < L):
                         print(position_cartesian)
                         #print('Verified: into the box')
                         all_nodes.append(node)
                         all_positions.append(position_cartesian)
+                        all_species.append(species_name)
                         distance_k = 0
                         k += alpha_k
                     else:
                         print('Hey', position_cartesian)
-                        distancex = np.min([np.abs(position_cartesian[0]), np.abs(position_cartesian[0] - Lx)])
-                        distancey = np.min([np.abs(position_cartesian[1]), np.abs(position_cartesian[1] - Ly)])
-                        distancez = np.min([np.abs(position_cartesian[2]), np.abs(position_cartesian[2] - Lz)])
-                        new_distance = distancex + distancey + distancez
-
+                        all_skipped.append(position_cartesian)
+                        # Get distance between current image and desired box
+                        new_distance = get_distance_to_box(position_cartesian, L)
+                        
                         #print(f'Not verified: from {distance_k} to {new_distance}')
 
                         # If new distance is smaller than before or no initialized, k advances in alpha_k direction
@@ -119,8 +118,8 @@ def get_atoms_in_box(particle_types, composition, cell, atomic_masses, charges, 
                             k += alpha_k
                         else:
                             #print('Exit')
-                            distance_k = None  # Initilizing it agains
-
+                            distance_k = new_distance
+                            
                             # If alpha_k is negative, k-search is finished; else, alpha_k is negative and it starts in zero
                             if alpha_k == 1:
                                 #print('Going backward')
@@ -137,7 +136,7 @@ def get_atoms_in_box(particle_types, composition, cell, atomic_masses, charges, 
                                     j += alpha_j
                                 else:
                                     #print('Exit')
-                                    distance_j = None  # Initilizing it agains
+                                    distance_j = new_distance
 
                                     # If alpha_j is negative, j-search is finished; else, alpha_j is negative and it starts in zero
                                     if alpha_j == 1:
@@ -155,7 +154,7 @@ def get_atoms_in_box(particle_types, composition, cell, atomic_masses, charges, 
                                             i += alpha_i
                                         else:
                                             #print('Exit')
-                                            distance_i = None  # Initilizing it agains
+                                            distance_i = new_distance
 
                                             # If alpha_i is negative, i-search is finished; else, alpha_i is negative and it starts in zero
                                             if alpha_i == 1:
@@ -172,7 +171,46 @@ def get_atoms_in_box(particle_types, composition, cell, atomic_masses, charges, 
                 if break_j: break
             # Updating i
             if break_i: break
-    return all_nodes, all_positions
+    return all_nodes, all_positions, all_species, all_skipped
+
+
+def get_orthorhombic_cell(cell, positions):
+
+    # Calculate the transformation matrix to make the lattice vectors orthogonal
+    reciprocal_basis = np.linalg.inv(cell.T)
+    transformation_matrix = np.dot(reciprocal_basis, np.diag([1.0, 1.0, 1.0]))
+
+    # Apply the transformation matrix to the lattice vectors and atomic positions
+    orthogonal_a = np.dot(cell[0], transformation_matrix)
+    orthogonal_b = np.dot(cell[1], transformation_matrix)
+    orthogonal_c = np.dot(cell[2], transformation_matrix)
+    
+    orthogonal_cell      = np.array([orthogonal_a, orthogonal_b, orthogonal_c])
+    orthogonal_positions = np.dot(positions, transformation_matrix)
+    
+    return orthogonal_cell, orthogonal_positions
+
+
+def get_distance_to_box(position_cartesian, L):
+    """Computes the euclidean distance between a given point and a box of shape [Lx, Ly, Lz].
+    
+    Args:
+        position_cartesian (ndarray) Cartesian coordinates of the point.
+        L                  (list):   Length of the box.
+    
+    Returns:
+        distance (float): Euclidean distance between point and box.
+    """
+        
+    distance = 0
+    for index in range(3):
+        if position_cartesian[index] < 0:
+            distance += np.power(position_cartesian[index], 2)
+        elif position_cartesian[index] > L[index]:
+            distance += np.power(position_cartesian[index] - L[index], 2)
+    distance = np.sqrt(distance)
+    
+    return distance
 
 
 def get_edges_in_box(nodes, positions):
@@ -180,12 +218,12 @@ def get_edges_in_box(nodes, positions):
     Every pair of particles are linked.
 
     Args:
-        nodes (list): all nodes in the box.
-        positions (list): corresponding positions of the particles.
+        nodes     (list): All nodes in the box.
+        positions (list): Corresponding positions of the particles.
 
     Returns:
-        edges      (list): edges linking all pairs of nodes.
-        attributes (list): weights of the corresponding edges (euclidean distance).
+        edges      (list): Edges linking all pairs of nodes.
+        attributes (list): Weights of the corresponding edges (euclidean distance).
     """
 
     # Get total particles in the box
@@ -202,8 +240,8 @@ def get_edges_in_box(nodes, positions):
         distances = np.linalg.norm(positions - positions[index_0], axis=1)
 
         # Delete distances above the current index (avoiding repeated distances)
-        temp_idxs = idxs[index_0:]
-        distances = distances[index_0:]
+        temp_idxs = idxs[index_0+1:]
+        distances = distances[index_0+1:]
 
         # Add all edges
         edges.append([np.ones(len(temp_idxs)) * index_0, temp_idxs])
@@ -256,13 +294,13 @@ def graph_POSCAR_encoding(cell, composition, concentration, positions, L):
 
     # Applying periodic boundary conditions (in reduced coordinates)
     # This is not strictly necessary (all images are being checked eitherway), but it can simplify things
-    while np.any(positions > 1):
-        positions[positions > 1] -= 1
-    while np.any(positions < 0):
-        positions[positions < 0] += 1
+    #while np.any(positions > 1):
+    #    positions[positions > 1] -= 1
+    #while np.any(positions < 0):
+    #    positions[positions < 0] += 1
 
     # Load all nodes and respective positions in the box
-    all_nodes, all_positions = get_atoms_in_box(particle_types,
+    all_nodes, all_positions, all_species, all_skipped = get_atoms_in_box(particle_types,
                                                 composition,
                                                 cell,
                                                 atomic_masses,
@@ -279,7 +317,7 @@ def graph_POSCAR_encoding(cell, composition, concentration, positions, L):
     nodes      = torch.tensor(all_nodes,  dtype=torch.float)
     edges      = torch.tensor(edges,      dtype=torch.long)
     attributes = torch.tensor(attributes, dtype=torch.float)
-    return nodes, edges, attributes
+    return nodes, edges, attributes, all_nodes, all_positions, all_species, all_skipped
 
 
 def standardize_dataset(dataset, labels):
@@ -1000,10 +1038,10 @@ def graph_to_direct_positions(graph, L):
     direct_positions[:, 2] /= L[2]
     
     # Translate between 0 and 1
-    while np.any(direct_positions >= 1):
-        direct_positions[direct_positions >= 1] -= 1
-    while np.any(direct_positions < 0):
-        direct_positions[direct_positions < 0] += 1
+    #while np.any(direct_positions >= 1):
+    #    direct_positions[direct_positions >= 1] -= 1
+    #while np.any(direct_positions < 0):
+    #    direct_positions[direct_positions < 0] += 1
     
     return direct_positions
 
