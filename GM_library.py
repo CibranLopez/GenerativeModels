@@ -60,135 +60,71 @@ def get_atoms_in_box(particle_types, composition, cell, atomic_masses, charges, 
 
         # Get the initial position
         position_0 = positions[idx]
-        print('aa')
-        print(position_0)
-
-        #print(f'Particle {idx} of type {species_name}')
-        # Get all images of particle_0 inside the intended box
-          # So first time it tries to get closer to the box
         
         
         i = 0
         alpha_i = 1
-        break_i = False
-        distance_i = None
         while True:
+            minimum_distance_j = None
+            success_j = False
             j = 0
             alpha_j = 1
-            break_j = False
-            distance_j = None
             while True:
+                minimum_distance_k = None
+                reference_distance = np.NaN  # So it outputs False when first compared with another distance
+                success_k = False
                 k = 0
                 alpha_k = 1
-                break_k = False
-                distance_k = None
                 while True:
-                    # Moving to the corresponding image
-                    position = position_0 + [i, j, k]
-                    print('')
-                    print([i, j, k])
-
-                    # Converting to cartesian distances
-                    position_cartesian = np.dot(position, cell)
-
-                    #print()
-
-                    # If the cartesian coordinates belong to the imposed box, it is added to the list
-                    if np.all(position_cartesian >= 0) and np.all(position_cartesian < L):
-                        print(position_cartesian)
+                    # Move to the corresponding image and convert to cartesian distances
+                    position_cartesian = np.dot(position_0 + [i, j, k], cell)
+                    
+                    new_distance = get_distance_to_box(position_cartesian, L)
+                    if new_distance == 0:
                         #print('Verified: into the box')
                         all_nodes.append(node)
                         all_positions.append(position_cartesian)
                         all_species.append(species_name)
-                        distance_k = 0
-                        k += alpha_k
-                    else:
-                        print('Hey', position_cartesian)
-                        all_skipped.append(position_cartesian)
-                        # Get distance between current image and desired box
-                        new_distance = get_distance_to_box(position_cartesian, L)
                         
-                        #print(f'Not verified: from {distance_k} to {new_distance}')
-
-                        # If new distance is smaller than before or no initialized, k advances in alpha_k direction
-                        # Else, we change direction or start again
-                        if (distance_k is None) or (new_distance < distance_k):
-                            #print('Continue')
-                            distance_k = new_distance
-                            k += alpha_k
-                        else:
-                            #print('Exit')
-                            distance_k = new_distance
-                            
-                            # If alpha_k is negative, k-search is finished; else, alpha_k is negative and it starts in zero
-                            if alpha_k == 1:
-                                #print('Going backward')
-                                alpha_k = -1
-                                k = -1
-                            else:
-                                #print('Breaking k')
-                                # Got to extreme for k
-                                break_k = True  # Which puts k = 0 and alpha_k = 1
-
-                                if (distance_j is None) or (new_distance < distance_j):
-                                    #print('Continue')
-                                    distance_j = new_distance
-                                    j += alpha_j
-                                else:
-                                    #print('Exit')
-                                    distance_j = new_distance
-
-                                    # If alpha_j is negative, j-search is finished; else, alpha_j is negative and it starts in zero
-                                    if alpha_j == 1:
-                                        #print('Going backward')
-                                        alpha_j = -1
-                                        j = -1
-                                    else:
-                                        #print('Breaking j')
-                                        # Got to extreme for j
-                                        break_j = True  # Which puts j = 0 and alpha_j = 1
-
-                                        if (distance_i is None) or (new_distance < distance_i):
-                                            #print('Continue')
-                                            distance_i = new_distance
-                                            i += alpha_i
-                                        else:
-                                            #print('Exit')
-                                            distance_i = new_distance
-
-                                            # If alpha_i is negative, i-search is finished; else, alpha_i is negative and it starts in zero
-                                            if alpha_i == 1:
-                                                #print('Going backward')
-                                                alpha_i = -1
-                                                i = -1
-                                            else:
-                                                #print('Breaking i')
-                                                # Got to extreme for i
-                                                break_i = True  # Which puts i = 0 and alpha_i = 1
-                    # Updating k
-                    if break_k: break
-                # Updating j
-                if break_j: break
-            # Updating i
-            if break_i: break
+                        # Check if successful
+                        success_k = True
+                    
+                    # Change direction or update i,j if the box is far
+                    elif new_distance > reference_distance:
+                        # Explore other direction or cancel
+                        if alpha_k == 1:
+                            k = 0
+                            alpha_k = -1
+                        else: break
+                    
+                    reference_distance = new_distance
+                    k += alpha_k
+                    
+                    if (minimum_distance_k is None) of (minimum_distance_k > reference_distance):
+                        minimum_distance_k = reference_distance
+                
+                # If k worked fine, j is fine as well thus continue; else, explore other direction or cancel
+                if success_k:
+                    success_j = True
+                else:
+                    if alpha_j == 1:
+                        j = 0
+                        alpha_j = -1
+                    else: break
+                
+                # Update j
+                j += alpha_j
+            
+            # If j did not work fine, explore other direction or cancel
+            if not success_j:
+                if alpha_i == 1:
+                    i = 0
+                    alpha_i = -1
+                else: break
+            
+            # Update i
+            i += alpha_i
     return all_nodes, all_positions, all_species, all_skipped
-
-
-def get_orthorhombic_cell(cell, positions):
-
-    # Calculate the transformation matrix to make the lattice vectors orthogonal
-    reciprocal_basis = np.linalg.inv(cell.T)
-    transformation_matrix = np.dot(reciprocal_basis, np.diag([1.0, 1.0, 1.0]))
-
-    # Apply the transformation matrix to the lattice vectors and atomic positions
-    orthogonal_a = np.dot(cell[0], transformation_matrix)
-    orthogonal_b = np.dot(cell[1], transformation_matrix)
-    orthogonal_c = np.dot(cell[2], transformation_matrix)
-    
-    orthogonal_cell      = np.array([orthogonal_a, orthogonal_b, orthogonal_c])
-    orthogonal_positions = np.dot(positions, transformation_matrix)
-    
-    return orthogonal_cell, orthogonal_positions
 
 
 def get_distance_to_box(position_cartesian, L):
