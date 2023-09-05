@@ -60,19 +60,18 @@ def get_atoms_in_box(particle_types, composition, cell, atomic_masses, charges, 
 
         # Get the initial position
         position_0 = positions[idx]
-        
-        
+
+        reference_distance_i = np.NaN  # So it outputs False when first compared with another distance
         i = 0
         alpha_i = 1
         while True:
-            minimum_distance_j = None
-            success_j = False
+            minimum_distance_i   = np.NaN
+            reference_distance_j = np.NaN
             j = 0
             alpha_j = 1
             while True:
-                minimum_distance_k = None
-                reference_distance = np.NaN  # So it outputs False when first compared with another distance
-                success_k = False
+                minimum_distance_j   = np.NaN
+                reference_distance_k = np.NaN
                 k = 0
                 alpha_k = 1
                 while True:
@@ -85,45 +84,48 @@ def get_atoms_in_box(particle_types, composition, cell, atomic_masses, charges, 
                         all_nodes.append(node)
                         all_positions.append(position_cartesian)
                         all_species.append(species_name)
-                        
-                        # Check if successful
-                        success_k = True
                     
                     # Change direction or update i,j if the box is far
-                    elif new_distance > reference_distance:
+                    elif new_distance > reference_distance_k:
                         # Explore other direction or cancel
                         if alpha_k == 1:
                             k = 0
                             alpha_k = -1
-                        else: break
+                        else:
+                            break
                     
-                    reference_distance = new_distance
+                    reference_distance_k = new_distance
                     k += alpha_k
                     
-                    if (minimum_distance_k is None) of (minimum_distance_k > reference_distance):
-                        minimum_distance_k = reference_distance
+                    if not minimum_distance_j <= reference_distance_k:
+                        minimum_distance_j = reference_distance_k
                 
                 # If k worked fine, j is fine as well thus continue; else, explore other direction or cancel
-                if success_k:
-                    success_j = True
-                else:
+                if minimum_distance_j > reference_distance_j:
                     if alpha_j == 1:
                         j = 0
                         alpha_j = -1
-                    else: break
+                    else:
+                        break
                 
                 # Update j
                 j += alpha_j
+                reference_distance_j = minimum_distance_j
+                
+                if not minimum_distance_i <= reference_distance_j:
+                    minimum_distance_i = reference_distance_j
             
             # If j did not work fine, explore other direction or cancel
-            if not success_j:
+            if minimum_distance_i > reference_distance_i:
                 if alpha_i == 1:
                     i = 0
                     alpha_i = -1
-                else: break
+                else:
+                    break
             
             # Update i
             i += alpha_i
+            reference_distance_i = minimum_distance_i
     return all_nodes, all_positions, all_species, all_skipped
 
 
