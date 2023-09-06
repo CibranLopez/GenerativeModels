@@ -6,11 +6,9 @@ import networkx            as nx
 import torch
 import sys
 
-from os                            import mkdir, path
 from torch_geometric.data          import Data
 from torch.nn                      import Linear
 from torch_geometric.nn            import GCNConv, GraphConv
-from torch_geometric.nn            import global_mean_pool
 from torch_geometric.utils.convert import to_networkx
 
 # Checking if pytorch can run in GPU, else CPU
@@ -34,9 +32,6 @@ def get_atoms_in_box(particle_types, composition, cell, atomic_masses, charges, 
         all_positions (list): positions of the respective nodes.
     """
 
-    # Getting box dimensions
-    Lx, Ly, Lz = L
-
     # Getting all nodes in the supercell
     all_nodes     = []
     all_positions = []
@@ -48,7 +43,7 @@ def get_atoms_in_box(particle_types, composition, cell, atomic_masses, charges, 
         # Name of the current species
         species_name = composition[particle_type]
 
-        # Loading the node (mass, charge, electronegativity anbd ionization energy)
+        # Loading the node (mass, charge, electronegativity and ionization energy)
         node = [float(atomic_masses[species_name]),
                 float(charges[species_name]),
                 float(electronegativities[species_name]),
@@ -210,16 +205,13 @@ def graph_POSCAR_encoding(cell, composition, concentration, positions, L):
     charges             = {}
     electronegativities = {}
     ionization_energies = {}
-    with open('/Users/cibran/Work/UPC/VASP/atomic_masses.dat', 'r') as atomic_masses_file:
+    with open('../VASP/atomic_masses.dat', 'r') as atomic_masses_file:
         for line in atomic_masses_file:
             (key, mass, charge, electronegativity, ionization_energy) = line.split()
             atomic_masses[key]       = mass
             charges[key]             = charge
             electronegativities[key] = electronegativity
             ionization_energies[key] = ionization_energy
-
-    # Counting number of particles
-    POSCAR_particles = np.sum(concentration)
 
     # Getting particle types
     particle_types = []
