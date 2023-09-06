@@ -37,13 +37,10 @@ def get_atoms_in_box(particle_types, composition, cell, atomic_masses, charges, 
     # Getting box dimensions
     Lx, Ly, Lz = L
 
-    #print('Starting loop')
-
     # Getting all nodes in the supercell
     all_nodes     = []
     all_positions = []
     all_species   = []
-    all_skipped   = []
     for idx in range(len(particle_types)):
         # Get particle type (index of type wrt composition in POSCAR)
         particle_type = particle_types[idx]
@@ -80,7 +77,6 @@ def get_atoms_in_box(particle_types, composition, cell, atomic_masses, charges, 
                     
                     new_distance = get_distance_to_box(position_cartesian, L)
                     if new_distance == 0:
-                        #print('Verified: into the box')
                         all_nodes.append(node)
                         all_positions.append(position_cartesian)
                         all_species.append(species_name)
@@ -126,7 +122,7 @@ def get_atoms_in_box(particle_types, composition, cell, atomic_masses, charges, 
             # Update i
             i += alpha_i
             reference_distance_i = minimum_distance_i
-    return all_nodes, all_positions, all_species, all_skipped
+    return all_nodes, all_positions, all_species
 
 
 def get_distance_to_box(position_cartesian, L):
@@ -238,15 +234,15 @@ def graph_POSCAR_encoding(cell, composition, concentration, positions, L):
     #    positions[positions < 0] += 1
 
     # Load all nodes and respective positions in the box
-    all_nodes, all_positions, all_species, all_skipped = get_atoms_in_box(particle_types,
-                                                composition,
-                                                cell,
-                                                atomic_masses,
-                                                charges,
-                                                electronegativities,
-                                                ionization_energies,
-                                                positions,
-                                                L)
+    all_nodes, all_positions, all_species = get_atoms_in_box(particle_types,
+                                                             composition,
+                                                             cell,
+                                                             atomic_masses,
+                                                             charges,
+                                                             electronegativities,
+                                                             ionization_energies,
+                                                             positions,
+                                                             L)
 
     # Get edges and attributes for the corresponding nodes
     edges, attributes = get_edges_in_box(all_nodes, all_positions)
@@ -255,7 +251,7 @@ def graph_POSCAR_encoding(cell, composition, concentration, positions, L):
     nodes      = torch.tensor(all_nodes,  dtype=torch.float)
     edges      = torch.tensor(edges,      dtype=torch.long)
     attributes = torch.tensor(attributes, dtype=torch.float)
-    return nodes, edges, attributes, all_nodes, all_positions, all_species, all_skipped
+    return nodes, edges, attributes, all_nodes, all_positions, all_species
 
 
 def standardize_dataset(dataset, labels):
