@@ -72,6 +72,8 @@ def get_atoms_in_box(particle_types, composition, cell, atomic_masses, charges, 
                     
                     new_distance = get_distance_to_box(position_cartesian, L)
                     if new_distance == 0:
+                        # Append this particle as one inside the desired region
+                        # Afterwards, we use this data to construct edge connections
                         all_nodes.append(node)
                         all_positions.append(position_cartesian)
                         all_species.append(species_name)
@@ -411,38 +413,6 @@ def get_random_graph(n_nodes, n_features, in_edge_index=None):
     return graph
 
 
-def diffusion_step(graph_0, t, n_diffusing_steps, s):
-    """Performs a forward step of a diffusive, Markov chain.
-    
-    G (t) = \sqrt{\alpha (t)} G (t-1) + \sqrt{1 - \alpha (t)} N (t)
-    
-    with G a graph and N noise.
-
-    Args:
-        graph_0 (torch_geometric.data.Data): Graph which is to be diffused (step t-1).
-
-    Returns:
-        graph_t (torch_geometric.data.Data): Diffused graph (step t).
-    """
-
-    # Clone graph that we are diffusing (not extrictly necessary)
-    graph_t = graph_0.clone()
-
-    # Number of nodes and features in the graph
-    n_nodes, n_features = torch.Tensor.size(graph_t.x)
-
-    # Generate gaussian (normal) noise
-    epsilon = get_random_graph(n_nodes, n_features, graph_t.edge_index)
-
-    # Compute alpha_t
-    alpha_t = get_alpha_t(t, n_diffusing_steps, s)
-
-    # Forward pass
-    graph_t.x         = torch.sqrt(alpha_t) * graph_t.x         + torch.sqrt(1 - alpha_t) * epsilon.x
-    graph_t.edge_attr = torch.sqrt(alpha_t) * graph_t.edge_attr + torch.sqrt(1 - alpha_t) * epsilon.edge_attr
-    return graph_t
-
-
 def diffuse(graph_0, n_diffusing_steps, s=1e-2, plot_steps=False):
     """Performs consecutive steps of diffusion in a reference graph.
 
@@ -472,7 +442,7 @@ def diffuse(graph_0, n_diffusing_steps, s=1e-2, plot_steps=False):
             nx.draw(networkx_graph, pos, with_labels=True, node_size=graph_t.x, font_size=10)
             plt.show()
         
-        graph_t = diffusion_step(graph_t, t, n_diffusing_steps, s)
+        graph_t, _ = diffusion_step(graph_t, t, n_diffusing_steps, s)
         all_graphs.append(graph_t)
     
     # Check if intermediate steps are plotted; then, plot the NetworkX graph
@@ -483,6 +453,38 @@ def diffuse(graph_0, n_diffusing_steps, s=1e-2, plot_steps=False):
         nx.draw(networkx_graph, pos, with_labels=True, node_size=graph_t.x, font_size=10)
         plt.show()
     return graph_t, all_graphs
+
+
+def diffusion_step(graph_0, t, n_diffusing_steps, s):
+    """Performs a forward step of a diffusive, Markov chain.
+    
+    G (t) = \sqrt{\alpha (t)} G (t-1) + \sqrt{1 - \alpha (t)} N (t)
+    
+    with G a graph and N noise.
+
+    Args:
+        graph_0 (torch_geometric.data.Data): Graph which is to be diffused (step t-1).
+
+    Returns:
+        graph_t (torch_geometric.data.Data): Diffused graph (step t).
+    """
+
+    # Clone graph that we are diffusing (not extrictly necessary)
+    graph_t = graph_0.clone()
+
+    # Number of nodes and features in the graph
+    n_nodes, n_features = torch.Tensor.size(graph_t.x)
+
+    # Generate gaussian (normal) noise
+    epsilon_t = get_random_graph(n_nodes, n_features, graph_t.edge_index)
+
+    # Compute alpha_t
+    alpha_t = get_alpha_t(t, n_diffusing_steps, s)
+
+    # Forward pass
+    graph_t.x         = torch.sqrt(alpha_t) * graph_t.x         + torch.sqrt(1 - alpha_t) * epsilon_t.x
+    graph_t.edge_attr = torch.sqrt(alpha_t) * graph_t.edge_attr + torch.sqrt(1 - alpha_t) * epsilon_t.edge_attr
+    return graph_t, epsilon_t
 
 
 def denoise(graph_t, n_denoising_steps, node_model, edge_model, s=1e-2, plot_steps=False):
