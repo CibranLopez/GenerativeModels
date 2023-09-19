@@ -220,13 +220,6 @@ def graph_POSCAR_encoding(cell, composition, concentration, positions, L):
     for i in range(len(composition)):
         particle_types += [i] * concentration[i]
 
-    # Applying periodic boundary conditions (in reduced coordinates)
-    # This is not strictly necessary (all images are being checked eitherway), but it can simplify things
-    #while np.any(positions > 1):
-    #    positions[positions > 1] -= 1
-    #while np.any(positions < 0):
-    #    positions[positions < 0] += 1
-
     # Load all nodes and respective positions in the box
     all_nodes, all_positions, all_species = get_atoms_in_box(particle_types,
                                                              composition,
@@ -965,12 +958,6 @@ def graph_to_direct_positions(graph, L):
     direct_positions[:, 1] /= L[1]
     direct_positions[:, 2] /= L[2]
     
-    # Translate between 0 and 1
-    #while np.any(direct_positions >= 1):
-    #    direct_positions[direct_positions >= 1] -= 1
-    #while np.any(direct_positions < 0):
-    #    direct_positions[direct_positions < 0] += 1
-    
     return direct_positions
 
 
@@ -1047,9 +1034,11 @@ def find_three_indexes(edge_indexes, edge_attributes, total_particles, threshold
     
     Returns:
         indexes (int): Indexes of the three nodes used as base.
+
+    Raises:
+        SystemExit: If the three particles are not found.
     """
     
-    indexes = (0, 0, 0)  # Initialize with dummy values
     for i in np.arange(total_particles):
         for j in np.arange(i+1, total_particles):
             for k in np.arange(j+1, total_particles):
@@ -1060,3 +1049,26 @@ def find_three_indexes(edge_indexes, edge_attributes, total_particles, threshold
                 d_temp = triangle_area(d_ij, d_jk, d_ik)
                 if d_temp > threshold:
                     return (i, j, k)
+    sys.exit('Error: there are not three indexes verifying the threshold')
+
+
+def add_t_information(graph, t_step):
+    """
+
+    Args:
+        graph (torch_geometric.data.Data): The input graph containing edge indexes and attributes.
+        t_step (int):                      Step of the diffusing/denoising process.
+
+    Returns:
+        graph (torch_geometric.data.Data): Updated graph, with t_step as a new node feature for every atom.
+    """
+
+    # Create a tensor filled with the value 3
+    value_to_append = torch.full((graph.num_nodes, 1), t_step)
+
+    # Append the value to each node feature
+    new_x = torch.cat((graph.x, value_to_append), dim=1)
+
+    # Update the graph with the new node features
+    graph.x = new_x
+    return graph
