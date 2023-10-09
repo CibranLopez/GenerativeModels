@@ -590,7 +590,7 @@ class nGCNN(torch.nn.Module):
 
 class eGCNN(nn.Module):
     """Graph convolution neural network for the prediction of edge attributes.
-    It predicts the new link from the product of the two involved nodes and the previous edge attribute.
+    Predictions of the new link arise from the product of the two involved nodes and the previous edge attribute.
     """
 
     def __init__(self, features_channels, pdropout):
@@ -603,10 +603,16 @@ class eGCNN(nn.Module):
 
     def forward(self, x_i, x_j, previous_attr):
         # Dot product between node distances (?)
-        x = x_i * x_j
+        x_ij = x_i * x_j  # Of dimension [..., features_channels]
+
+        # Reshape previous_attr tensor to have the same number of dimensions as x
+        previous_attr = previous_attr.view(-1, 1)  # Reshapes from [...] to [..., 1]
+
+        # Concatenate the tensors along dimension 1 to get a tensor of size [..., 6]
+        x = torch.cat((x_ij, previous_attr), dim=1)
 
         # Linear convolutions
-        x = self.linear1(x, previous_attr)
+        x = self.linear1(x)
         x = x.relu()
 
         # Dropout layer (only for training)
