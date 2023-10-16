@@ -241,7 +241,7 @@ def graph_POSCAR_encoding(cell, composition, concentration, positions, L):
     return nodes, edges, attributes, all_nodes, all_positions, all_species
 
 
-def standardize_dataset(dataset, labels):
+def standardize_dataset(dataset):
     """Standardizes a given dataset (both nodes features and edge attributes).
     Typically, a normal distribution is applied, although it be easily modified to apply other distributions.
 
@@ -249,7 +249,6 @@ def standardize_dataset(dataset, labels):
 
     Args:
         dataset (list): List containing graph structures.
-        labels  (list): List containing the label of each graph in the dataset.
 
     Returns:
         dataset_std (list): Normalized dataset.
@@ -788,17 +787,17 @@ def POSCAR_graph_encoding(graph, L, POSCAR_name=None, POSCAR_directory='./'):
     keys = [find_closest_key(available_embeddings, emb) for emb in data_embeddings]
 
     # Define the lattice vectors from L vector
-    lattice_vectors = [
+    lattice_vectors = np.array([
         [L[0], 0.0,  0.0],
         [0.0,  L[1], 0.0],
         [0.0,  0.0,  L[2]],
-    ]
+    ])
     
     # Check consistency of the graph
-    ...
+    #...
 
     # Get the position of each atom in direct coordinates
-    direct_positions = graph_to_direct_positions(graph, L)
+    direct_positions = graph_to_direct_positions(graph, lattice_vectors)
 
     # Get elements' composition, concentration, and positions
     POSCAR_composition, POSCAR_concentration, POSCAR_positions = composition_concentration_from_keys(keys, direct_positions)
@@ -920,13 +919,14 @@ def get_distance_attribute(index0, index1, edge_indexes, edge_attributes):
     return distance_attribute
 
 
-def graph_to_direct_positions(graph, L):
+def graph_to_direct_positions(graph, lattice_vectors):
     """
     Calculate the positions of atoms in a molecular graph based on given distances, in direct coordinates.
     The graph is assumed to be self-consistent (all lenghts to be correct).
 
     Args:
-        graph (torch_geometric.data.Data): The input graph containing edge indexes and attributes.
+        graph           (torch_geometric.data.Data): The input graph containing edge indexes and attributes.
+        lattice_vectors (3x3 np.ndarray):            Simulaiton cell (lattice vectors).
 
     Returns:
         list: A list of atom positions in the format [x, y, z]. Dimensionless, with [x, y, z] in (0, 1).
@@ -946,10 +946,14 @@ def graph_to_direct_positions(graph, L):
     d_01 = get_distance_attribute(index_0, index_1, edge_indexes, edge_attributes)
     d_02 = get_distance_attribute(index_0, index_2, edge_indexes, edge_attributes)
     d_12 = get_distance_attribute(index_1, index_2, edge_indexes, edge_attributes)
-
+    
     # Reference the first three atoms
     x2 = (d_01**2 + d_02**2 - d_12**2) / (2 * d_01)
     y2 = np.sqrt(d_02**2 - x2**2)
+    
+    
+    print(index_0, index_1, index_2, d_01, d_02, d_12, x2, y2)
+    
     
     # Iterate over the remaining atoms (positions regarding the graph are preserved)
     cartesian_positions = []
@@ -969,13 +973,19 @@ def graph_to_direct_positions(graph, L):
         # Append the new position to the positions list
         cartesian_positions.append(rn)
     
+    # Compute inverse lattice cell
+    inv_lattice_vectors = np.linalg.inv(lattice_vectors)
+    
     # Pass to numpy ndarray
     direct_positions = np.array(cartesian_positions)
     
     # Pass from cartesian to direct coordinates
-    direct_positions[:, 0] /= L[0]
-    direct_positions[:, 1] /= L[1]
-    direct_positions[:, 2] /= L[2]
+    for i in range(len(cartesian_positions)):
+        direct_positions[i] = np.dot(direct_positions[i], inv_lattice_vectors)
+    
+    # Apply periodic bounday conditions
+    while np.any(direct_positions >  1): direct_positions -= 1
+    while np.any(direct_positions < -1): direct_positions += 1
     
     return direct_positions
 
@@ -1043,8 +1053,8 @@ def triangle_area(a, b, c):
     return area
 
 
-def find_three_indexes(edge_indexes, edge_attributes, total_particles, threshold=10):
-    """Finds three nodes which define a triangle of appropiate area.
+def find_three_indexes(edge_indexes, edge_attributes, total_particles, threshold=200):
+    """Finds three nodes which define a triangle of appropiate area. Looks for the biggest area or that which higher than a threshold if this is provided.
     
     Args:
         edge_indexes    (array): List of edge indexes.
@@ -1058,6 +1068,8 @@ def find_three_indexes(edge_indexes, edge_attributes, total_particles, threshold
         SystemExit: If the three particles are not found.
     """
     
+    maximum_area = 0  # Seek for those indexes maximizing the area
+    indexes = None  # Record the corresponding indexes
     for i in np.arange(total_particles):
         for j in np.arange(i+1, total_particles):
             for k in np.arange(j+1, total_particles):
@@ -1066,9 +1078,16 @@ def find_three_indexes(edge_indexes, edge_attributes, total_particles, threshold
                 d_ik = get_distance_attribute(i, k, edge_indexes, edge_attributes)
                 
                 d_temp = triangle_area(d_ij, d_jk, d_ik)
+                
                 if d_temp > threshold:
+                    # Good enought indexes found
                     return (i, j, k)
-    sys.exit('Error: there are not three indexes verifying the threshold')
+                
+                if d_temp > maximum_area:
+                    # Update indexes and maximum area
+                    indexes = (i, j, k)
+                    maximum_area = d_temp
+    return indexes
 
 
 def add_t_information(graph, t_step):
