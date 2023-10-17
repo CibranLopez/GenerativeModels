@@ -14,7 +14,6 @@ from torch_geometric.utils.convert import to_networkx
 # Checking if pytorch can run in GPU, else CPU
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-
 def get_atoms_in_box(particle_types, composition, cell, atomic_masses, charges, electronegativities, ionization_energies, positions, L):
     """Create a list with all nodes and their positions inside the rectangular box.
 
@@ -628,7 +627,7 @@ class eGCNN(nn.Module):
         x = x.relu()
         
         # Linear convolution
-        x = self.linear1(x)
+        x = self.linear2(x)
         x = x.relu()
 
         # Dropout layer (only for training)
@@ -641,8 +640,7 @@ class eGCNN(nn.Module):
 
 
 def find_closest_key(dictionary, target_array):
-    """
-    Find the key in the dictionary that corresponds to the array closest to the target array.
+    """Find the key in the dictionary that corresponds to the array closest to the target array.
 
     Parameters:
         dictionary   (dict):          A dictionary where keys are associated with arrays.
@@ -669,8 +667,7 @@ def find_closest_key(dictionary, target_array):
 
 
 def discretize_graph(graph):
-    """
-    Convert the graph's continuous node embeddings to the closest valid embeddings based on the periodic table.
+    """Convert the graph's continuous node embeddings to the closest valid embeddings based on the periodic table.
 
     Args:
         graph (torch_geometric.data.Data): The initial graph structure with continuous node embeddings.
@@ -725,8 +722,7 @@ def discretize_graph(graph):
 
 
 def composition_concentration_from_keys(keys, positions):
-    """
-    Calculate composition and concentration from a list of keys. It sorts the elements, so they are enumerated only once. Attending to that, the positions are sorted as well.
+    """Calculate composition and concentration from a list of keys. It sorts the elements, so they are enumerated only once. Attending to that, the positions are sorted as well.
 
     Args:
         keys      (list):       A list of keys representing some data.
@@ -752,14 +748,14 @@ def composition_concentration_from_keys(keys, positions):
     return composition, concentration, positions_sorted
 
 
-def POSCAR_graph_encoding(graph, L, POSCAR_name=None, POSCAR_directory='./'):
-    """
-    Encode a graph into a POSCAR (VASP input) file format.
+def POSCAR_graph_encoding(graph, L, file_name='POSCAR', POSCAR_name=None, POSCAR_directory='./'):
+    """Encode a graph into a POSCAR (VASP input) file format.
 
     Args:
         graph            (torch_geometric.data.Data): The input graph structure with continuous node embeddings.
         L                (list):                      Lattice parameters assumed to be orthogonal, in the format [a, b, c].
-        POSCAR_name      (str, optional):             Name for the POSCAR file. Defaults to None.
+        file_name        (str, optional):             Name for the POSCAR file. Defaults to POSCAR.
+        POSCAR_name      (str, optional):             Title for the POSCAR file. Defaults to None.
         POSCAR_directory (str, optional):             Directory for the POSCAR file to be saved at. Defaults to current folder.
 
     Returns:
@@ -808,7 +804,7 @@ def POSCAR_graph_encoding(graph, L, POSCAR_name=None, POSCAR_directory='./'):
     POSCAR_composition, POSCAR_concentration, POSCAR_positions = composition_concentration_from_keys(keys, direct_positions)
 
     # Write file
-    with open(f'{POSCAR_directory}/POSCAR', 'w') as POSCAR_file:
+    with open(f'{POSCAR_directory}/{file_name}', 'w') as POSCAR_file:
         # Delete previous data in the file
         POSCAR_file.truncate()
         
@@ -835,8 +831,7 @@ def POSCAR_graph_encoding(graph, L, POSCAR_name=None, POSCAR_directory='./'):
 
 
 def get_graph_losses(graph1, graph2):
-    """
-    Calculate loss values for node features and edge attributes between two graphs.
+    """Calculate loss values for node features and edge attributes between two graphs.
 
     Args:
         graph1 (torch_geometric.data.Data): The first input graph.
@@ -863,8 +858,7 @@ def get_graph_losses(graph1, graph2):
 
 
 def allocate_atom_n(d_01, x2, y2, d_0n, d_1n, d_2n):
-    """
-    Calculate the coordinates of atom 'n' based on geometric constraints.
+    """Calculate the coordinates of atom 'n' based on geometric constraints.
 
     Args:
         d_01 (float): Distance between atoms '0' and '1'.
@@ -892,8 +886,7 @@ def allocate_atom_n(d_01, x2, y2, d_0n, d_1n, d_2n):
 
 
 def get_distance_attribute(index0, index1, edge_indexes, edge_attributes):
-    """
-    Get the distance attribute between two nodes with given indices.
+    """Get the distance attribute between two nodes with given indices.
 
     Args:
         index0          (int): Index of the first node.
@@ -925,8 +918,7 @@ def get_distance_attribute(index0, index1, edge_indexes, edge_attributes):
 
 
 def graph_to_direct_positions(graph, lattice_vectors):
-    """
-    Calculate the positions of atoms in a molecular graph based on given distances, in direct coordinates.
+    """Calculate the positions of atoms in a molecular graph based on given distances, in direct coordinates.
     The graph is assumed to be self-consistent (all lenghts to be correct).
 
     Args:
@@ -1006,12 +998,12 @@ def check_graph_validity(graph):
     """
     
     if torch.any(graph.edge_attr <= 0):
-        sys.exit('Invalid graph, atoms overlapping')
+        print('Invalid graph, atoms overlapping. Applying brute force :)')
+        graph.edge_attr[graph.edge_attr <= 0] = 0
 
 
 def get_target_loss(obtained_target, seeked_target):
-    """
-    Calculate the target loss based on obtained and seeked targets. It checks if seeked_target is a specific value or rather a limit
+    """Calculate the target loss based on obtained and seeked targets. It checks if seeked_target is a specific value or rather a limit
 
     Args:
         obtained_target (float):        The obtained target value.
@@ -1096,7 +1088,7 @@ def find_three_indexes(edge_indexes, edge_attributes, total_particles, threshold
 
 
 def add_t_information(graph, t_step):
-    """
+    """Include the diffusion step as a new node feature.
 
     Args:
         graph (torch_geometric.data.Data): The input graph containing edge indexes and attributes.
