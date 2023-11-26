@@ -23,7 +23,7 @@ def get_atoms_in_box(particle_types, composition, cell, atomic_masses, charges, 
         charges             (dict):
         electronegativities (dict):
         ionization_energies (dict):
-        positions:
+        positions           (list): direc coordinates of particles.
         L                   (list): distances of the box in each direction.
 
     Returns:
@@ -143,9 +143,62 @@ def get_distance_to_box(position_cartesian, L):
     return distance
 
 
-def get_edges_in_box(nodes, positions):
+def get_atoms_in_unitcell(particle_types, composition, cell, atomic_masses, charges, electronegativities, ionization_energies, positions, L):
+    """Create a list with all nodes and their positions belonging to the unit cell.
+
+    Args:
+        particle_types      (list): type of particles (0, 1...).
+        atomic_masses       (dict):
+        charges             (dict):
+        electronegativities (dict):
+        ionization_energies (dict):
+        positions           (list): direc coordinates of particles.
+        L                   (list): distances of the box in each direction.
+
+    Returns:
+        all_nodes     (list): features of each node in the box.
+        all_positions (list): positions of the respective nodes.
+    """
+
+    # Getting all nodes in the supercell
+    all_nodes     = []
+    all_positions = []
+    all_species   = []
+    for idx in range(len(particle_types)):
+        # Get particle type (index of type wrt composition in POSCAR)
+        particle_type = particle_types[idx]
+
+        # Name of the current species
+        species_name = composition[particle_type]
+
+        # Loading the node (mass, charge, electronegativity and ionization energy)
+        node = [float(atomic_masses[species_name]),
+                float(charges[species_name]),
+                float(electronegativities[species_name]),
+                float(ionization_energies[species_name])
+                ]
+
+        # Get the initial position
+        position_0 = positions[idx]
+        
+        # Verify that belongs to the unit cell
+        while np.any(position_0 >  1): position_0[np.where(position_0 > 1)]  -= 1
+        while np.any(position_0 < -1): position_0[np.where(position_0 < -1)] += 1
+        
+        # Convert to cartesian coordinates
+        position_cartesian_0 = np.dot(position_0, cell)
+
+        # Append this particle, which belong to the unit cell
+        # Afterwards, we use this data to construct edge connections
+        all_nodes.append(node)
+        all_positions.append(position_cartesian_0)
+        all_species.append(species_name)
+    return all_nodes, all_positions, all_species
+
+
+def get_edges_and_attributes(nodes, positions):
     """From a list of nodes and corresponding positions, get all edges and attributes for the graph.
-    Every pair of particles are linked.
+    Every pair of particles is linked.
 
     Args:
         nodes     (list): All nodes in the box.
@@ -185,8 +238,10 @@ def get_edges_in_box(nodes, positions):
 
 def graph_POSCAR_encoding(cell, composition, concentration, positions, L):
     """Generates a graph parameters from a POSCAR.
-    Fills the space of a cubic box of dimension [0-Lx, 0-Ly, 0-Lz] considering all necessary images.
-    It links every particle with the three closest ones within the box, disregarding images.
+    There are two implementations:
+        1.- Fills the space of a cubic box of dimension [0-Lx, 0-Ly, 0-Lz] considering all necessary images.
+        2.- Considers only the atoms from the unit cell.
+    It links every particle with the rest for the given set of nodes and edges.
 
     Args:
         cell          (3x3 float ndarray): Lattice vectors of the reference POSCAR.
@@ -201,7 +256,6 @@ def graph_POSCAR_encoding(cell, composition, concentration, positions, L):
     """
 
     # Loading dictionary of atomic masses
-
     atomic_masses       = {}
     charges             = {}
     electronegativities = {}
@@ -214,95 +268,30 @@ def graph_POSCAR_encoding(cell, composition, concentration, positions, L):
             electronegativities[key] = electronegativity
             ionization_energies[key] = ionization_energy
 
-    # Getting particle types
+    # Getting particle types as a list with each species occupying a new positions, maintaining order
     particle_types = []
     for i in range(len(composition)):
         particle_types += [i] * concentration[i]
 
     # Load all nodes and respective positions in the box
-    all_nodes, all_positions, all_species = get_atoms_in_box(particle_types,
-                                                             composition,
-                                                             cell,
-                                                             atomic_masses,
-                                                             charges,
-                                                             electronegativities,
-                                                             ionization_energies,
-                                                             positions,
-                                                             L)
+    all_nodes, all_positions, all_species = get_atoms_in_unitcell(particle_types,
+                                                                  composition,
+                                                                  cell,
+                                                                  atomic_masses,
+                                                                  charges,
+                                                                  electronegativities,
+                                                                  ionization_energies,
+                                                                  positions,
+                                                                  L)
 
     # Get edges and attributes for the corresponding nodes
-    edges, attributes = get_edges_in_box(all_nodes, all_positions)
+    edges, attributes = get_edges_and_attributes(all_nodes, all_positions)
 
     # Convert to torch tensors and return
     nodes      = torch.tensor(all_nodes,  dtype=torch.float)
     edges      = torch.tensor(edges,      dtype=torch.long)
     attributes = torch.tensor(attributes, dtype=torch.float)
     return nodes, edges, attributes, all_nodes, all_positions, all_species
-
-'''
-def standardize_dataset(dataset):
-    """Standardizes a given dataset (both nodes features and edge attributes).
-    Typically, a normal distribution is applied, although it be easily modified to apply other distributions.
-
-    Currently: normal distribution.
-
-    Args:
-        dataset (list): List containing graph structures.
-
-    Returns:
-        dataset_std (list): Normalized dataset.
-        parameters  (list): Parameters needed to re-scale predicted properties from the dataset.
-    """
-    
-    # Clone the dataset (using a list comprehension)
-    dataset_std = [graph.clone() for graph in dataset]
-    
-    # Compute means and standard deviations
-
-    target_list = torch.tensor([])
-    edge_list   = torch.tensor([])
-
-    for data in dataset_std:
-        target_list = torch.cat((target_list, data.y), 0)
-        edge_list   = torch.cat((edge_list, data.edge_attr), 0)
-
-    scale = 1e0
-
-    target_mean = torch.mean(target_list)
-    target_std  = torch.std(target_list)
-
-    edge_mean = torch.mean(edge_list)
-    edge_std  = torch.std(edge_list)
-
-    target_factor = target_std / scale
-    edge_factor   = edge_std / scale
-
-    # Update normalized values into the database
-
-    for data in dataset_std:
-        data.y = (data.y - target_mean) / target_factor
-        data.edge_attr = (data.edge_attr - edge_mean) / edge_factor
-
-    # Same for the node features
-
-    feat_mean = torch.tensor([])
-    feat_std = torch.tensor([])
-
-    for feat_index in range(dataset_std[0].num_node_features):
-        feat_list = torch.tensor([])
-
-        for data in dataset_std:
-            feat_list = torch.cat((feat_list, data.x[:, feat_index]), 0)
-
-        feat_mean = torch.cat((feat_mean, torch.tensor([torch.mean(feat_list)])), 0)
-        feat_std = torch.cat((feat_std, torch.tensor([torch.std(feat_list)])), 0)
-
-        for data in dataset_std:
-            data.x[:, feat_index] = (data.x[:, feat_index] - feat_mean[feat_index]) * scale / feat_std[feat_index]
-
-    parameters = [target_mean, feat_mean, edge_mean, target_std, edge_std, feat_std, scale]
-    return dataset_std, parameters
-'''
 
 
 def standardize_dataset(dataset):
@@ -647,7 +636,8 @@ class nGCNN(torch.nn.Module):
         # Define graph convolution layers
         self.conv1 = GraphConv(features_channels, 256)  # Introducing node features
         self.conv2 = GraphConv(256, 256)
-        self.conv3 = GraphConv(256, features_channels)  # Predicting node features
+        self.conv3 = GraphConv(256, 256)
+        self.conv4 = GraphConv(256, features_channels)  # Predicting node features
 
         self.pdropout = pdropout
 
@@ -658,6 +648,8 @@ class nGCNN(torch.nn.Module):
         x = self.conv2(x, edge_index, edge_attr)
         x = x.relu()
         x = self.conv3(x, edge_index, edge_attr)
+        x = x.relu()
+        x = self.conv4(x, edge_index, edge_attr)
         return x
 
 
@@ -670,8 +662,9 @@ class eGCNN(nn.Module):
         super(eGCNN, self).__init__()
 
         self.linear1 = Linear(features_channels+1, 32)  # Introducing node features + previous edge attribute
-        self.linear2 = Linear(32, 64)
-        self.linear3 = Linear(64, 1)  # Predicting one single weight
+        self.linear2 = Linear(32, 32)
+        self.linear3 = Linear(32, 32)
+        self.linear4 = Linear(32, 1)  # Predicting one single weight
 
         self.pdropout = pdropout
 
@@ -685,19 +678,19 @@ class eGCNN(nn.Module):
         # Concatenate the tensors along dimension 1 to get a tensor of size [..., 6]
         x = torch.cat((x_ij, previous_attr), dim=1)
 
-        # Linear convolution
+        # Apply linear convolution with ReLU activation function
         x = self.linear1(x)
         x = x.relu()
-        
-        # Linear convolution
         x = self.linear2(x)
+        x = x.relu()
+        x = self.linear3(x)
         x = x.relu()
 
         # Dropout layer (only for training)
         x = F.dropout(x, p=self.pdropout, training=self.training)
 
         # Last linear convolution
-        x = self.linear3(x)
+        x = self.linear4(x)
         x = x.relu()
         return x
 
@@ -1044,8 +1037,8 @@ def graph_to_direct_positions(graph, lattice_vectors):
         direct_positions[i] = np.dot(direct_positions[i], inv_lattice_vectors)
     
     # Apply periodic bounday conditions
-    while np.any(direct_positions >  1): direct_positions -= 1
-    while np.any(direct_positions < -1): direct_positions += 1
+    while np.any(direct_positions >  1): direct_positions[np.where(direct_positions > 1)]  -= 1
+    while np.any(direct_positions < -1): direct_positions[np.where(direct_positions < -1)] += 1
     
     return direct_positions
 
