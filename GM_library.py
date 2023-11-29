@@ -143,7 +143,7 @@ def get_distance_to_box(position_cartesian, L):
     return distance
 
 
-def get_atoms_in_unitcell(particle_types, composition, cell, atomic_masses, charges, electronegativities, ionization_energies, positions, L):
+def get_atoms_in_unitcell(particle_types, composition, cell, atomic_masses, charges, electronegativities, ionization_energies, positions):
     """Create a list with all nodes and their positions belonging to the unit cell.
 
     Args:
@@ -153,7 +153,6 @@ def get_atoms_in_unitcell(particle_types, composition, cell, atomic_masses, char
         electronegativities (dict):
         ionization_energies (dict):
         positions           (list): direc coordinates of particles.
-        L                   (list): distances of the box in each direction.
 
     Returns:
         all_nodes     (list): features of each node in the box.
@@ -236,7 +235,7 @@ def get_edges_and_attributes(nodes, positions):
     return edges, attributes
 
 
-def graph_POSCAR_encoding(cell, composition, concentration, positions, L):
+def graph_POSCAR_encoding(cell, composition, concentration, positions):
     """Generates a graph parameters from a POSCAR.
     There are two implementations:
         1.- Fills the space of a cubic box of dimension [0-Lx, 0-Ly, 0-Lz] considering all necessary images.
@@ -248,7 +247,6 @@ def graph_POSCAR_encoding(cell, composition, concentration, positions, L):
         composition   (3   str   ndarray): Names of the elements of the material.
         concentration (3   int   ndarray): Number of each of the previous elements.
         positions     (Nx3 float ndarray): Direct coordinates of each particle in the primitive cell.
-        L             (3   float ndarray): Maximum distance in each cartesian direction for describing the material.
     Returns:
         nodes      (torch tensor): Generated nodes with corresponding features.
         edges      (torch tensor): Generated connections between nodes.
@@ -281,8 +279,7 @@ def graph_POSCAR_encoding(cell, composition, concentration, positions, L):
                                                                   charges,
                                                                   electronegativities,
                                                                   ionization_energies,
-                                                                  positions,
-                                                                  L)
+                                                                  positions)
 
     # Get edges and attributes for the corresponding nodes
     edges, attributes = get_edges_and_attributes(all_nodes, all_positions)
@@ -635,9 +632,7 @@ class nGCNN(torch.nn.Module):
 
         # Define graph convolution layers
         self.conv1 = GraphConv(features_channels, 256)  # Introducing node features
-        self.conv2 = GraphConv(256, 256)
-        self.conv3 = GraphConv(256, 256)
-        self.conv4 = GraphConv(256, features_channels)  # Predicting node features
+        self.conv2 = GraphConv(256, features_channels)  # Predicting node features
 
         self.pdropout = pdropout
 
@@ -646,10 +641,6 @@ class nGCNN(torch.nn.Module):
         x = self.conv1(x, edge_index, edge_attr)
         x = x.relu()
         x = self.conv2(x, edge_index, edge_attr)
-        x = x.relu()
-        x = self.conv3(x, edge_index, edge_attr)
-        x = x.relu()
-        x = self.conv4(x, edge_index, edge_attr)
         return x
 
 
@@ -662,9 +653,7 @@ class eGCNN(nn.Module):
         super(eGCNN, self).__init__()
 
         self.linear1 = Linear(features_channels+1, 32)  # Introducing node features + previous edge attribute
-        self.linear2 = Linear(32, 32)
-        self.linear3 = Linear(32, 32)
-        self.linear4 = Linear(32, 1)  # Predicting one single weight
+        self.linear2 = Linear(32, 1)  # Predicting one single weight
 
         self.pdropout = pdropout
 
@@ -680,17 +669,12 @@ class eGCNN(nn.Module):
 
         # Apply linear convolution with ReLU activation function
         x = self.linear1(x)
-        x = x.relu()
-        x = self.linear2(x)
-        x = x.relu()
-        x = self.linear3(x)
-        x = x.relu()
 
         # Dropout layer (only for training)
         x = F.dropout(x, p=self.pdropout, training=self.training)
 
         # Last linear convolution
-        x = self.linear4(x)
+        x = self.linear2(x)
         x = x.relu()
         return x
 
@@ -804,12 +788,12 @@ def composition_concentration_from_keys(keys, positions):
     return composition, concentration, positions_sorted
 
 
-def POSCAR_graph_encoding(graph, L, file_name='POSCAR', POSCAR_name=None, POSCAR_directory='./'):
+def POSCAR_graph_encoding(graph, lattice_vectors, file_name='POSCAR', POSCAR_name=None, POSCAR_directory='./'):
     """Encode a graph into a POSCAR (VASP input) file format.
 
     Args:
         graph            (torch_geometric.data.Data): The input graph structure with continuous node embeddings.
-        L                (list):                      Lattice parameters assumed to be orthogonal, in the format [a, b, c].
+        lattice_vectors  (numpy arrray):              Lattice vectors.
         file_name        (str, optional):             Name for the POSCAR file. Defaults to POSCAR.
         POSCAR_name      (str, optional):             Title for the POSCAR file. Defaults to None.
         POSCAR_directory (str, optional):             Directory for the POSCAR file to be saved at. Defaults to current folder.
@@ -842,13 +826,6 @@ def POSCAR_graph_encoding(graph, L, file_name='POSCAR', POSCAR_name=None, POSCAR
 
     # Get most similar atoms for each graph node and create a list of keys
     keys = [find_closest_key(available_embeddings, emb) for emb in data_embeddings]
-
-    # Define the lattice vectors from L vector
-    lattice_vectors = np.array([
-        [L[0], 0.0,  0.0],
-        [0.0,  L[1], 0.0],
-        [0.0,  0.0,  L[2]],
-    ])
     
     # Check consistency of the graph
     #...
