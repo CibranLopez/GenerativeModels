@@ -24,7 +24,7 @@ def get_atoms_in_box(particle_types, composition, cell, atomic_masses, charges, 
         electronegativities (dict):
         ionization_energies (dict):
         positions           (list): direc coordinates of particles.
-        L                   (list): distances of the box in each direction.
+        L                   (list): size of the box in each direction (x, y, z).
 
     Returns:
         all_nodes     (list): features of each node in the box.
@@ -302,8 +302,8 @@ def standardize_dataset(dataset):
 
     Returns:
         Tuple: A tuple containing the normalized dataset and parameters needed to re-scale predicted properties.
-            - dataset_std (list): Normalized dataset.
-            - parameters (dict): Parameters needed to re-scale predicted properties from the dataset.
+            - dataset_std        (list): Normalized dataset.
+            - dataset_parameters (dict): Parameters needed to re-scale predicted properties from the dataset.
     """
 
     # Clone the dataset (using a list comprehension)
@@ -349,19 +349,28 @@ def standardize_dataset(dataset):
         feat_mean[feat_index] = temp_feat_mean
         feat_std[feat_index]  = temp_feat_std
 
-    parameters = [target_mean, feat_mean, edge_mean, target_std, edge_std, feat_std, scale]
-    return dataset_std, parameters
+    # Create and save as a dictionary
+    dataset_parameters = {
+        'target_mean': target_mean,
+        'feat_mean': feat_mean,
+        'edge_mean': edge_mean,
+        'target_std': target_std,
+        'edge_std': edge_std,
+        'feat_std': feat_std,
+        'scale': scale
+    }
+    return dataset_std, dataset_parameters
 
 
-def revert_standardize_dataset(dataset, parameters):
+def revert_standardize_dataset(dataset, dataset_parameters):
     """De-standardizes a given dataset (both nodes features and edge attributes).
     Typically, a normal distribution is applied, although it be easily modified to apply other distributions.
 
     Currently: normal distribution.
 
     Args:
-        dataset    (list): List containing graph structures.
-        parameters (list): Parameters needed to re-scale predicted properties from the dataset.
+        dataset            (list): List containing graph structures.
+        dataset_parameters (dict): Parameters needed to re-scale predicted properties from the dataset.
 
     Returns:
         dataset_rstd (list): De-normalized dataset.
@@ -370,19 +379,16 @@ def revert_standardize_dataset(dataset, parameters):
     # Clone the dataset (using a list comprehension)
     dataset_rstd = [graph.clone() for graph in dataset]
     
-    # Assigning parameters accordingly
-    _, feat_mean, edge_mean, _, edge_std, feat_std, scale = parameters
-    
-    edge_factor = edge_std / scale
+    edge_factor = dataset_parameters['edge_std'] / dataset_parameters['scale']
 
     # Update normalized values into the database
     for data in dataset_rstd:
-        data.edge_attr = data.edge_attr * edge_factor + edge_mean
+        data.edge_attr = data.edge_attr * dataset_parameters['edge_factor'] + dataset_parameters['edge_mean']
 
     # Same for the node features
     for feat_index in range(dataset_rstd[0].num_node_features):
         for data in dataset_rstd:
-            data.x[:, feat_index] = data.x[:, feat_index] * feat_std[feat_index] / scale + feat_mean[feat_index]
+            data.x[:, feat_index] = data.x[:, feat_index] * dataset_parameters['feat_std'][feat_index] / dataset_parameters['scale'] + dataset_parameters['feat_mean'][feat_index]
 
     return dataset_rstd
 
@@ -527,14 +533,16 @@ def diffusion_step(graph_0, t, n_diffusing_steps, s):
     return graph_t, epsilon_t
 
 
-def denoise(graph_t, n_denoising_steps, node_model, edge_model, s=1e-2, plot_steps=False):
+def denoise(graph_t, n_denoising_steps, node_model, edge_model, s=1e-2, sigma=None, plot_steps=False, target=None):
     """Performs consecutive steps of diffusion in a reference graph.
 
     Args:
         graph_t           (torch_geometric.data.Data): Reference graph to be diffused (step t-1).
         n_diffusing_steps (int):                       Number of diffusive steps.
         s                 (float):                     Parameter which controls the decay of alpha with t.
+        sigma             (float):                     Parameter which controls the amount of noised added when generating.
         plot_steps        (bool):                      Whether to plot or not each intermediate step.
+        target            (torch.array):               Information of the seeked target, to be added to the graph.
 
     Returns:
         graph_0 (torch_geometric.data.Data): Graph with random node features and edge attributes (step t).
@@ -547,9 +555,13 @@ def denoise(graph_t, n_denoising_steps, node_model, edge_model, s=1e-2, plot_ste
     
     # Define t_steps as inverse of the diffuse process
     t_steps = np.arange(1, n_denoising_steps+1)[::-1]
-    for t in t_steps:
+    for t_step in t_steps:
         # Add t_step information to graph_t
-        graph_0 = add_t_information(graph_0, t)
+        graph_0 = add_features_to_graph(graph_0, t_step)
+        
+        # Add target information
+        if target is not None:
+            graph_0 = add_features_to_graph(graph_0, target)
 
         # Perform a single forward pass for predicting node features
         out_x = node_model(graph_0.x,
@@ -584,7 +596,7 @@ def denoise(graph_t, n_denoising_steps, node_model, edge_model, s=1e-2, plot_ste
         graph_0.x = graph_0.x[:, :-1]
 
         # Denoise the graph with the predicted noise
-        graph_0 = denoising_step(graph_0, noise_graph, t, n_denoising_steps, s=s)
+        graph_0 = denoising_step(graph_0, noise_graph, t_step, n_denoising_steps, s=s, sigma=sigma)
         all_graphs.append(graph_0)
         
     # Check if intermediate steps are plotted; then, plot the NetworkX graph
@@ -597,12 +609,16 @@ def denoise(graph_t, n_denoising_steps, node_model, edge_model, s=1e-2, plot_ste
     return graph_0, all_graphs
 
 
-def denoising_step(graph_t, epsilon, t, n_denoising_steps, s):
+def denoising_step(graph_t, epsilon, t, n_denoising_steps, s, sigma):
     """Performs a forward step of a denoising chain.
 
     Args:
         graph_t (torch_geometric.data.Data): Graph which is to be denoised (step t).
         epsilon (torch_geometric.data.Data): Predicted noise to substract.
+        t                 (int):             Step of the diffusion process.
+        n_diffusing_steps (int):             Number of diffusive steps.
+        s                 (float):           Parameter which controls the decay of alpha with t.
+        sigma             (float):           Parameter which controls the amount of noised added when generating.
 
     Returns:
         graph_0 (torch_geometric.data.Data): Denoised graph (step t-1).
@@ -614,9 +630,15 @@ def denoising_step(graph_t, epsilon, t, n_denoising_steps, s):
     # Compute alpha_t
     alpha_t = get_alpha_t(t, n_denoising_steps, s)
 
+    # Number of nodes and features in the graph
+    n_nodes, n_features = torch.Tensor.size(graph_t.x)
+    
+    # Generate gaussian (normal) noise
+    epsilon_t = get_random_graph(n_nodes, n_features, graph_t.edge_index)
+    
     # Backard pass
-    graph_0.x         = graph_0.x         / torch.sqrt(alpha_t) - torch.sqrt((1 - alpha_t) / alpha_t) * epsilon.x
-    graph_0.edge_attr = graph_0.edge_attr / torch.sqrt(alpha_t) - torch.sqrt((1 - alpha_t) / alpha_t) * epsilon.edge_attr
+    graph_0.x         = graph_0.x         / torch.sqrt(alpha_t) - torch.sqrt((1 - alpha_t) / alpha_t) * epsilon.x         + sigma * epsilon_t.x
+    graph_0.edge_attr = graph_0.edge_attr / torch.sqrt(alpha_t) - torch.sqrt((1 - alpha_t) / alpha_t) * epsilon.edge_attr + sigma * epsilon_t.edge_attr
     return graph_0
 
 
@@ -826,9 +848,6 @@ def POSCAR_graph_encoding(graph, lattice_vectors, file_name='POSCAR', POSCAR_nam
 
     # Get most similar atoms for each graph node and create a list of keys
     keys = [find_closest_key(available_embeddings, emb) for emb in data_embeddings]
-    
-    # Check consistency of the graph
-    #...
 
     # Get the position of each atom in direct coordinates
     direct_positions = graph_to_direct_positions(graph, lattice_vectors)
@@ -1120,23 +1139,41 @@ def find_three_indexes(edge_indexes, edge_attributes, total_particles, threshold
     return indexes
 
 
-def add_t_information(graph, t_step):
-    """Include the diffusion step as a new node feature.
+def add_features_to_graph(graph_0, node_features):
+    """Include some more information to the node features. The generated graph does not modify the input graph.
 
     Args:
-        graph (torch_geometric.data.Data): The input graph containing edge indexes and attributes.
-        t_step (int):                      Step of the diffusing/denoising process.
+        graph_0       (torch_geometric.data.Data): The input graph containing edge indexes and attributes.
+        node_features (torch.array of size 2):     Information to be added to the graph (target, step of the diffusing/denoising process, etc).
 
     Returns:
-        graph (torch_geometric.data.Data): Updated graph, with t_step as a new node feature for every atom.
+        graph (torch_geometric.data.Data): Updated graph, with node_features as a new node feature for every atom.
     """
 
-    # Create a tensor filled with the value 3
-    value_to_append = torch.full((graph.num_nodes, 1), t_step)
-
-    # Append the value to each node feature
-    new_x = torch.cat((graph.x, value_to_append), dim=1)
+    graph = graph_0.clone()
+    
+    # Check that the size of node_features is the expected by the function
+    if len(torch.Tensor.size(node_features)) != 2:
+        sys.exit('Error: node_features does not have the expected size')
+    
+    # Concatenate tensors along the second dimension (dim=1)
+    new_x = torch.cat((graph.x, node_features[0].unsqueeze(0).repeat(graph.x.size(0), 1)), dim=1)
 
     # Update the graph with the new node features
     graph.x = new_x
     return graph
+
+
+def interpolate_graphs(dataset):
+    """Linearly interpolates a set of graphs.
+
+    Args:
+        dataset (list): List containing graph structures.
+
+    Returns:
+        graph (torch_geometric.data.Data): Interpolated graph structure.
+    """
+    
+    graph_0 = zeros_like(dataset[0])
+    
+    return graph_0
