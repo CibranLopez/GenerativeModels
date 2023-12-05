@@ -5,10 +5,12 @@ import torch.nn            as nn
 import networkx            as nx
 import torch
 import sys
+import itertools
 
+from pymatgen.core.structure       import Structure
+from scipy.spatial                 import Voronoi
 from torch.nn                      import Linear
 from torch_geometric.nn            import GCNConv, GraphConv
-from torch_geometric.utils.convert import to_networkx
 
 # Checking if pytorch can run in GPU, else CPU
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -195,7 +197,105 @@ def get_atoms_in_unitcell(particle_types, composition, cell, atomic_masses, char
     return all_nodes, all_positions, all_species
 
 
-def get_edges_and_attributes(nodes, positions):
+def get_voronoi_tessellation(atomic_masses, charges, electronegativities, ionization_energies, structure):
+    """
+    Get the Voronoi nodes of a structure.
+    Templated from the TopographyAnalyzer class, added to pymatgen.analysis.defects.utils by Yiming Chen, but now deleted.
+    Modified to map down to primitive, do Voronoi analysis, then map back to original supercell; much more efficient.
+
+    Args:
+        structure (pymatgen Structure object): Structure from which the graph is to be generated
+    """
+
+    # Map all sites to the unit cell; 0 ≤ xyz < 1
+    structure = Structure.from_sites(structure, to_unit_cell=True)
+
+    # Get Voronoi nodes in primitive structure and then map back to the
+    # supercell
+    prim_structure = structure.get_primitive_structure()
+
+    # Get all atom coords in a supercell of the structure because
+    # Voronoi polyhedra can extend beyond the standard unit cell
+    coords = []
+    cell_range = list(range(-1, 2))
+    for shift in itertools.product(cell_range, cell_range, cell_range):
+        for site in prim_structure.sites:
+            shifted = site.frac_coords + shift
+            coords.append(prim_structure.lattice.get_cartesian_coords(shifted))
+
+    # Voronoi tessellation
+    voro = Voronoi(coords)
+    
+    tol = 1e-3
+    edges      = []
+    attributes = []
+    for atoms in voro.ridge_points:  # Atoms are indexes referred to coords
+        # Dictionary for storing information about each atom
+        atoms_info = {}
+        
+        # Check if any of those atoms belong to the unitcell
+        for atom_idx in range(2):
+            atom = atoms[atom_idx]
+            
+            # Direct ccordinates from supercell referenced to the primitive cell
+            frac_coords = prim_structure.lattice.get_fractional_coords(coords[atom])
+
+            is_atom_inside = True
+            frac_coords_uc = frac_coords
+            if not np.all([-tol <= coord < 1 + tol for coord in frac_coords]):
+                # atom_x is not inside
+                is_atom_inside = False
+
+                # Apply periodic bounday conditions
+                while np.any(frac_coords_uc >  1): frac_coords_uc[np.where(frac_coords_uc > 1)]  -= 1
+                while np.any(frac_coords_uc < -1): frac_coords_uc[np.where(frac_coords_uc < -1)] += 1
+            
+            # Obtain mapping to index in unit cell
+            uc_idx = np.argmin(np.linalg.norm(structure.frac_coords - frac_coords_uc, axis=1))
+            
+            # Generate dictionary storing relevant information of the atom
+            atom_info = {
+                atom_idx: {
+                    'atom':           atom,
+                    'is_atom_inside': is_atom_inside,
+                    'cart_coords':    coords[atom],
+                    'uc_idx':         uc_idx
+                }
+            }
+            # Update with information of current atom
+            atoms_info.update(atom_info)
+        
+        # Check if any of those belong to the unitcell
+        if atoms_info[0]['is_atom_inside'] or atoms_info[1]['is_atom_inside']:
+            uc_idx_x = atoms_info[0]['uc_idx']
+            uc_idx_y = atoms_info[1]['uc_idx']
+            
+            cart_coords_x = atoms_info[0]['cart_coords']
+            cart_coords_y = atoms_info[1]['cart_coords']
+            
+            edges.append([uc_idx_x,
+                          uc_idx_y])
+            
+            attributes.append(np.linalg.norm(cart_coords_x - cart_coords_y))
+
+    # Generate nodes from all atoms in structure
+    nodes = []
+    for idx in range(structure.num_sites):
+        # Get species type
+        species_name = str(structure[idx].species)[:-1]
+
+        # Get node info
+        # Loading the node (mass, charge, electronegativity and ionization energy)
+        node = [float(atomic_masses[species_name]),
+                float(charges[species_name]),
+                float(electronegativities[species_name]),
+                float(ionization_energies[species_name])
+                ]
+        nodes.append(node)
+    return nodes, edges, attributes
+
+
+def get_all_linked_edges_and_attributes(nodes, positions):
     """From a list of nodes and corresponding positions, get all edges and attributes for the graph.
     Every pair of particles is linked.
 
@@ -235,18 +335,15 @@ def get_edges_and_attributes(nodes, positions):
     return edges, attributes
 
 
-def graph_POSCAR_encoding(cell, composition, concentration, positions):
+def graph_POSCAR_encoding(structure, encoding_type='voronoi'):
     """Generates a graph parameters from a POSCAR.
     There are two implementations:
-        1.- Fills the space of a cubic box of dimension [0-Lx, 0-Ly, 0-Lz] considering all necessary images.
-        2.- Considers only the atoms from the unit cell.
-    It links every particle with the rest for the given set of nodes and edges.
+        1.- Voronoi tessellation.
+        2.- Fills the space of a cubic box of dimension [0-Lx, 0-Ly, 0-Lz] considering all necessary images. It links every particle with the rest for the given set of nodes and edges.
 
     Args:
-        cell          (3x3 float ndarray): Lattice vectors of the reference POSCAR.
-        composition   (3   str   ndarray): Names of the elements of the material.
-        concentration (3   int   ndarray): Number of each of the previous elements.
-        positions     (Nx3 float ndarray): Direct coordinates of each particle in the primitive cell.
+        structure (pymatgen Structure object): Structure from which the graph is to be generated.
+        encoding_type (str): Framework used for encoding the structure.
     Returns:
         nodes      (torch tensor): Generated nodes with corresponding features.
         edges      (torch tensor): Generated connections between nodes.
@@ -266,29 +363,45 @@ def graph_POSCAR_encoding(cell, composition, concentration, positions):
             electronegativities[key] = electronegativity
             ionization_energies[key] = ionization_energy
 
-    # Getting particle types as a list with each species occupying a new positions, maintaining order
-    particle_types = []
-    for i in range(len(composition)):
-        particle_types += [i] * concentration[i]
+    if encoding_type == 'voronoi':
+        # Get edges and attributes for the corresponding tessellation
+        nodes, edges, attributes = get_voronoi_tessellation(atomic_masses,
+                                                            charges,
+                                                            electronegativities,
+                                                            ionization_energies,
+                                                            structure)
+        
+        # Convert to torch tensors and return
+        nodes      = torch.tensor(nodes,      dtype=torch.float)
+        edges      = torch.tensor(edges,      dtype=torch.long).T
+        attributes = torch.tensor(attributes, dtype=torch.float)
+        
+    elif encoding_type == 'box':
+        """
+        # Get particle types as a list with each species occupying a new positions, maintaining order
+        particle_types = []
+        for i in range(len(composition)):
+            particle_types += [i] * concentration[i]
+        
+        # Load all nodes and respective positions in the box
+        nodes, positions, species = get_atoms_in_unitcell(particle_types,
+                                                          composition,
+                                                          cell,
+                                                          atomic_masses,
+                                                          charges,
+                                                          electronegativities,
+                                                          ionization_energies,
+                                                          positions)
 
-    # Load all nodes and respective positions in the box
-    all_nodes, all_positions, all_species = get_atoms_in_unitcell(particle_types,
-                                                                  composition,
-                                                                  cell,
-                                                                  atomic_masses,
-                                                                  charges,
-                                                                  electronegativities,
-                                                                  ionization_energies,
-                                                                  positions)
-
-    # Get edges and attributes for the corresponding nodes
-    edges, attributes = get_edges_and_attributes(all_nodes, all_positions)
-
-    # Convert to torch tensors and return
-    nodes      = torch.tensor(all_nodes,  dtype=torch.float)
-    edges      = torch.tensor(edges,      dtype=torch.long)
-    attributes = torch.tensor(attributes, dtype=torch.float)
-    return nodes, edges, attributes, all_nodes, all_positions, all_species
+        # Get edges and attributes for the corresponding nodes (all linked to each other)
+        edges, attributes = get_all_linked_edges_and_attributes(all_nodes, all_positions)
+        
+        # Convert to torch tensors and return
+        nodes      = torch.tensor(nodes,      dtype=torch.float)
+        edges      = torch.tensor(edges,      dtype=torch.long)
+        attributes = torch.tensor(attributes, dtype=torch.float)
+        """
+    return nodes, edges, attributes
 
 
 def find_closest_key(dictionary, target_array):

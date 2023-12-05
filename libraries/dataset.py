@@ -97,7 +97,7 @@ def revert_standardize_dataset(dataset, dataset_parameters):
 
     # Update normalized values into the database
     for data in dataset_rstd:
-        data.edge_attr = data.edge_attr * dataset_parameters['edge_factor'] + dataset_parameters['edge_mean']
+        data.edge_attr = data.edge_attr * edge_factor + dataset_parameters['edge_mean']
 
     # Same for the node features
     for feat_index in range(dataset_rstd[0].num_node_features):
