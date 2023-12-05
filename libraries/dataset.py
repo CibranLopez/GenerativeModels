@@ -1,15 +1,4 @@
-import numpy               as np
-import matplotlib.pyplot   as plt
-import torch.nn.functional as F
-import torch.nn            as nn
-import networkx            as nx
 import torch
-import sys
-
-from torch_geometric.data          import Data
-from torch.nn                      import Linear
-from torch_geometric.nn            import GCNConv, GraphConv
-from torch_geometric.utils.convert import to_networkx
 
 # Checking if pytorch can run in GPU, else CPU
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')

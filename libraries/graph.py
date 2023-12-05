@@ -6,7 +6,6 @@ import networkx            as nx
 import torch
 import sys
 
-from torch_geometric.data          import Data
 from torch.nn                      import Linear
 from torch_geometric.nn            import GCNConv, GraphConv
 from torch_geometric.utils.convert import to_networkx
