@@ -301,8 +301,11 @@ class eGCNN(nn.Module):
     def __init__(self, features_channels, pdropout):
         super(eGCNN, self).__init__()
 
-        self.linear1 = Linear(features_channels+1, 32)  # Introducing node features + previous edge attribute
-        self.linear2 = Linear(32, 1)  # Predicting one single weight
+        # Set random seed for reproducibility
+        torch.manual_seed(12345)
+
+        self.linear1 = Linear(features_channels+1, 64)  # Introducing node features + previous edge attribute
+        self.linear2 = Linear(64, 1)  # Predicting one single weight
 
         self.pdropout = pdropout
 
