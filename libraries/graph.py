@@ -578,8 +578,8 @@ def POSCAR_graph_encoding(graph, lattice_vectors, file_name='POSCAR', POSCAR_nam
         # Write concentration (number of each of the previous elements)
         np.savetxt(POSCAR_file, [POSCAR_concentration], fmt='%d', delimiter=' ')
 
-        # Write position in direct form
-        POSCAR_file.write('Direct\n')
+        # Write position in cartesian form
+        POSCAR_file.write('Cartesian\n')
         np.savetxt(POSCAR_file, POSCAR_positions, delimiter=' ')
 
     return POSCAR_file
@@ -617,16 +617,14 @@ def get_distance_attribute(index0, index1, edge_indexes, edge_attributes):
     """Get the distance attribute between two nodes with given indices.
 
     Args:
-        index0          (int): Index of the first node.
-        index1          (int): Index of the second node.
+        index0          (int):        Index of the first node.
+        index1          (int):        Index of the second node.
         edge_indexes    (np.ndarray): Array containing indices of connected nodes for each edge.
         edge_attributes (np.ndarray): Array containing attributes corresponding to each edge.
 
     Returns:
         float: The distance attribute between the two nodes.
-        
-    Raises:
-        SystemExit: If the provided node indices do not correspond to a linked pair.
+        False if index0, index1 not linked.
     """
     
     # Create a mask to find matching edges
@@ -637,7 +635,7 @@ def get_distance_attribute(index0, index1, edge_indexes, edge_attributes):
     matching_edge_indices = np.where(mask_direct | mask_reverse)[0]
     
     if len(matching_edge_indices) == 0:
-        sys.exit(f'Error: the pair [{index0}, {index1}] is not linked')
+        return False  # The pair is not linked
     
     # Get the distance attribute from the first matching edge
     distance_attribute = edge_attributes[matching_edge_indices[0]]
@@ -645,16 +643,15 @@ def get_distance_attribute(index0, index1, edge_indexes, edge_attributes):
     return distance_attribute
 
 
-def graph_to_direct_positions(graph, lattice_vectors):
-    """Calculate the positions of atoms in a molecular graph based on given distances, in direct coordinates.
-    The graph is assumed to be self-consistent (all lenghts to be correct).
+def graph_to_cartesian_positions(graph):
+    """Calculate the positions of atoms in a molecular graph based on given distances, in cartesian coordinates.
+    The graph is assumed to be self-consistent (all lenghts to be correct), and with a Voronoi tessellation.
 
     Args:
-        graph           (torch_geometric.data.Data): The input graph containing edge indexes and attributes.
-        lattice_vectors (3x3 np.ndarray):            Simulaiton cell (lattice vectors).
+        graph (torch_geometric.data.Data): The input graph containing edge indexes and attributes.
 
     Returns:
-        list: A list of atom positions in the format [x, y, z]. Dimensionless, with [x, y, z] in (0, 1).
+        dict: A dictionary of atom positions in the format [x, y, z] for each atomic index, in angstroms.
     """
     
     # Extract indexes and attributes from the graph
@@ -664,55 +661,119 @@ def graph_to_direct_positions(graph, lattice_vectors):
     # Define the number of atoms in the graph
     total_particles = len(graph.x)
     
-    # Find three indexes for using as reference of the graph
-    index_0, index_1, index_2 = find_three_indexes(edge_indexes, edge_attributes, total_particles)
-    
     # Get necessary distances
-    d_01 = get_distance_attribute(index_0, index_1, edge_indexes, edge_attributes)
-    d_02 = get_distance_attribute(index_0, index_2, edge_indexes, edge_attributes)
-    d_12 = get_distance_attribute(index_1, index_2, edge_indexes, edge_attributes)
+    d_01 = get_distance_attribute(0, 1, edge_indexes, edge_attributes)
+    d_02 = get_distance_attribute(0, 2, edge_indexes, edge_attributes)
+    d_12 = get_distance_attribute(1, 2, edge_indexes, edge_attributes)
     
     # Reference the first three atoms
     x2 = (d_01**2 + d_02**2 - d_12**2) / (2 * d_01)
     y2 = np.sqrt(d_02**2 - x2**2)
     
+    # Impose three particles at the beginning
+    cartesian_positions = {
+        0: [0,    0,  0],
+        1: [d_01, 0,  0],
+        2: [x2,   y2, 0]
+    }
     
-    print(index_0, index_1, index_2, d_01, d_02, d_12, x2, y2)
+    # Initialized to 3 for three connections
+    n_connected_dict = {
+        0: [],
+        1: [],
+        2: [],
+        3: [3]
+    }
     
+    highest_n_explored = 3
     
-    # Iterate over the remaining atoms (positions regarding the graph are preserved)
-    cartesian_positions = []
-    for n in range(total_particles):
-        if   n == index_0: rn = [0,    0,  0]
-        elif n == index_1: rn = [d_01, 0,  0]
-        elif n == index_2: rn = [x2,   y2, 0]
-        else:
-            # Get distances for atom 'n'
-            d_0n = get_distance_attribute(index_0, n, edge_indexes, edge_attributes)
-            d_1n = get_distance_attribute(index_1, n, edge_indexes, edge_attributes)
-            d_2n = get_distance_attribute(index_2, n, edge_indexes, edge_attributes)
-            
-            # Allocate atom 'n' using optimized function
-            rn = allocate_atom_n(d_01, x2, y2, d_0n, d_1n, d_2n)
+    while True:  # Goes until all particles have been studied
+        idx = n_connected_dict[3][0]
         
-        # Append the new position to the positions list
-        cartesian_positions.append(rn)
+        # Updated highest_n_explored with idx
+        if idx > highest_n_explored:  # This allows tracking all particles
+            highest_n_explored = idx
+        
+        n_connected, idx_connected = get_n_connected(idx, cartesian_positions, edge_indexes, edge_attributes)
+        
+        if n_connected >= 3:
+            # Set idx in cartesian_positions
+            idx_0 = idx_connected[0]
+            idx_1 = idx_connected[1]
+            idx_2 = idx_connected[2]
+            
+            x2, y2, _ = cartesian_positions[idx_2]
+            
+            # Get necessary distances
+            d_01 = get_distance_attribute(idx_0, idx_1, edge_indexes, edge_attributes)
+            d_0n = get_distance_attribute(idx_0, idx,   edge_indexes, edge_attributes)
+            d_1n = get_distance_attribute(idx_1, idx,   edge_indexes, edge_attributes)
+            d_2n = get_distance_attribute(idx_2, idx,   edge_indexes, edge_attributes)
+            
+            temp_dict = {
+                idx: allocate_atom_n(d_01, x2, y2, d_0n, d_1n, d_2n)
+            }
+            
+            cartesian_positions.update(temp_dict)
+            
+            # Now that cartesian_positions has been increased, n_connected_dict is updated
+            n_connected_dict = update_n_connected_dict(n_connected_dict, idx, edge_indexes, edge_attributes)
+            
+            # Remove from n_connected_dict
+            n_connected_dict[3].remove(idx)
+        
+        else:
+            # n_connected_dict is updated adding idx where it belongs to
+            n_connected_dict[n_connected].append(idx)
+        
+        if highest_n_explored == total_particles:
+            break
+        
+        if not len(n_connected_dict[3]):
+            n_connected_dict[3].append(highest_n_explored)
     
-    # Compute inverse lattice cell
-    inv_lattice_vectors = np.linalg.inv(lattice_vectors)
+    return cartesian_positions
+
+
+def update_n_connected_dict(n_connected_dict, idx_0, edge_indexes, edge_attributes):
+    for i in np.arange(3+1)[::-1]:  # i = {3, 2, 1, 0}
+        for idx_t in n_connected_dict[i]:
+            if get_distance_attribute(idx_0, idx_t, edge_indexes, edge_attributes) is not False:
+                # Remove from current list
+                n_connected_dict[i].remove(idx_t)
+                
+                if i < 3:  # Else there is no list
+                    # Append to next list
+                    n_connected_dict[i+1].append(idx_t)
+    return n_connected_dict
+
+
+def get_n_connected(idx_0, cartesian_positions, edge_indexes, edge_attributes):
+    n_connected = 0
+    idx_connected = []
+    for idx_t in cartesian_positions.columns:
+        if get_distance_attribute(idx_0, idx_t, edge_indexes, edge_attributes) is not False:
+            n_connected += 1
+            idx_connected.append(idx_t)
     
-    # Pass to numpy ndarray
-    direct_positions = np.array(cartesian_positions)
+    return n_connected, idx_connected
+
+
+def lattice_vectors_from_cartesian_positions(graph, cartesian_positions):
+    """Calculate lattice vectors as a regression problem given their cartesian positions.
+
+    Args:
+        graph               (torch_geometric.data.Data): The input graph containing edge indexes and attributes.
+        cartesian_positions (dict):                      A dictionary of atom positions in the format [x, y, z] for each atomic index, in angstroms.
+
+    Returns:
+        3x3 np.ndarray: Simulation cell (lattice vectors).
     
-    # Pass from cartesian to direct coordinates
-    for i in range(len(cartesian_positions)):
-        direct_positions[i] = np.dot(direct_positions[i], inv_lattice_vectors)
+    x + (alpha, beta, gamma) (a1, a2, a3) = x'
+    """
     
-    # Apply periodic bounday conditions
-    while np.any(direct_positions >  1): direct_positions[np.where(direct_positions > 1)]  -= 1
-    while np.any(direct_positions < -1): direct_positions[np.where(direct_positions < -1)] += 1
-    
-    return direct_positions
+
+    return lattice_vectors
 
 
 def check_graph_validity(graph):
@@ -728,61 +789,3 @@ def check_graph_validity(graph):
     if torch.any(graph.edge_attr <= 0):
         print('Invalid graph, atoms overlapping. Applying brute force :)')
         graph.edge_attr[graph.edge_attr <= 0] = 0
-
-
-def triangle_area(a, b, c):
-    """Compute the area of a triangle.
-    
-    Args:
-        a (float): Lenght of one edge.
-        b (float): Lenght of one edge.
-        c (float): Lenght of one edge.
-    
-    Returns:
-        area (float): Area of the triangle.
-    """
-    
-    # Calculate the semi-perimeter
-    s = (a + b + c) / 2
-    
-    # Calculate the area using Heron's formula
-    area = np.sqrt(s * (s - a) * (s - b) * (s - c))
-    
-    return area
-
-
-def find_three_indexes(edge_indexes, edge_attributes, total_particles, threshold=200):
-    """Finds three nodes which define a triangle of appropiate area. Looks for the biggest area or that which higher than a threshold if this is provided.
-    
-    Args:
-        edge_indexes    (array): List of edge indexes.
-        edge_attributes (array): Corresponding list of edge attributes.
-        total_particles (int):   Total number of particles in the graph.
-    
-    Returns:
-        indexes (int): Indexes of the three nodes used as base.
-
-    Raises:
-        SystemExit: If the three particles are not found.
-    """
-    
-    maximum_area = 0  # Seek for those indexes maximizing the area
-    indexes = None  # Record the corresponding indexes
-    for i in np.arange(total_particles):
-        for j in np.arange(i+1, total_particles):
-            for k in np.arange(j+1, total_particles):
-                d_ij = get_distance_attribute(i, j, edge_indexes, edge_attributes)
-                d_jk = get_distance_attribute(j, k, edge_indexes, edge_attributes)
-                d_ik = get_distance_attribute(i, k, edge_indexes, edge_attributes)
-                
-                d_temp = triangle_area(d_ij, d_jk, d_ik)
-                
-                if d_temp > threshold:
-                    # Good enought indexes found
-                    return (i, j, k)
-                
-                if d_temp > maximum_area:
-                    # Update indexes and maximum area
-                    indexes = (i, j, k)
-                    maximum_area = d_temp
-    return indexes
