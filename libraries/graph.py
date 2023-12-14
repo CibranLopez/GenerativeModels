@@ -553,7 +553,7 @@ def POSCAR_graph_encoding(graph, lattice_vectors, file_name='POSCAR', POSCAR_nam
     keys = [find_closest_key(available_embeddings, emb) for emb in data_embeddings]
 
     # Get the position of each atom in direct coordinates
-    direct_positions = graph_to_direct_positions(graph, lattice_vectors)
+    direct_positions = graph_to_cartesian_positions(graph)
 
     # Get elements' composition, concentration, and positions
     POSCAR_composition, POSCAR_concentration, POSCAR_positions = composition_concentration_from_keys(keys, direct_positions)
@@ -608,9 +608,10 @@ def allocate_atom_n(d_01, x2, y2, d_0n, d_1n, d_2n):
     
     # Calculate z-coordinate of atom 'n'
     zn_square = d_0n**2 - xn**2 - yn**2
-    zn = np.sqrt(zn_square) if zn_square > 0 else 0
-    
-    return [xn, yn, zn]
+    if zn_square > -1e-4:  # Accounting for numerical errors
+        zn = np.sqrt(zn_square)
+        return [xn, yn, zn]
+    return None
 
 
 def get_distance_attribute(index0, index1, edge_indexes, edge_attributes):
@@ -635,12 +636,45 @@ def get_distance_attribute(index0, index1, edge_indexes, edge_attributes):
     matching_edge_indices = np.where(mask_direct | mask_reverse)[0]
     
     if len(matching_edge_indices) == 0:
-        return False  # The pair is not linked
+        return None  # The pair is not linked
     
     # Get the distance attribute from the first matching edge
     distance_attribute = edge_attributes[matching_edge_indices[0]]
     
     return distance_attribute
+
+
+def find_initial_basis(total_particles, edge_indexes, edge_attributes):
+    for idx_0 in range(total_particles):
+        for idx_1 in np.arange(idx_0+1, total_particles):
+            for idx_2 in np.arange(idx_1+1, total_particles):
+                condition_01 = (get_distance_attribute(idx_0, idx_1, edge_indexes, edge_attributes) is not None)
+                condition_12 = (get_distance_attribute(idx_1, idx_2, edge_indexes, edge_attributes) is not None)
+                condition_02 = (get_distance_attribute(idx_0, idx_2, edge_indexes, edge_attributes) is not None)
+                if condition_01 and condition_12 and condition_02:
+                    return idx_0, idx_1, idx_2
+
+
+def find_valid_reference(n_connected, idx_connected, edge_indexes, edge_attributes):
+    for i in range(n_connected):
+        for j in np.arange(i+1, n_connected):
+            for k in np.arange(j+1, n_connected):
+                idx_0 = idx_connected[i]
+                idx_1 = idx_connected[j]
+                idx_2 = idx_connected[k]
+
+                x2, y2, _ = cartesian_positions[idx_2]
+                
+                # Get necessary distances
+                d_01 = get_distance_attribute(idx_0, idx_1, edge_indexes, edge_attributes)
+                d_0n = get_distance_attribute(idx_0, idx,   edge_indexes, edge_attributes)
+                d_1n = get_distance_attribute(idx_1, idx,   edge_indexes, edge_attributes)
+                d_2n = get_distance_attribute(idx_2, idx,   edge_indexes, edge_attributes)
+                
+                temp_position = allocate_atom_n(d_01, x2, y2, d_0n, d_1n, d_2n)
+                
+                if temp_position is not None:
+                    return temp_position
 
 
 def graph_to_cartesian_positions(graph):
@@ -661,10 +695,13 @@ def graph_to_cartesian_positions(graph):
     # Define the number of atoms in the graph
     total_particles = len(graph.x)
     
+    # Select three initial particles which are interconnected
+    idx_0, idx_1, idx_2 = find_initial_basis(total_particles, edge_indexes, edge_attributes)
+    
     # Get necessary distances
-    d_01 = get_distance_attribute(0, 1, edge_indexes, edge_attributes)
-    d_02 = get_distance_attribute(0, 2, edge_indexes, edge_attributes)
-    d_12 = get_distance_attribute(1, 2, edge_indexes, edge_attributes)
+    d_01 = get_distance_attribute(idx_0, idx_1, edge_indexes, edge_attributes)
+    d_02 = get_distance_attribute(idx_0, idx_2, edge_indexes, edge_attributes)
+    d_12 = get_distance_attribute(idx_1, idx_2, edge_indexes, edge_attributes)
     
     # Reference the first three atoms
     x2 = (d_01**2 + d_02**2 - d_12**2) / (2 * d_01)
@@ -672,22 +709,26 @@ def graph_to_cartesian_positions(graph):
     
     # Impose three particles at the beginning
     cartesian_positions = {
-        0: [0,    0,  0],
-        1: [d_01, 0,  0],
-        2: [x2,   y2, 0]
+        idx_0: [0,    0,  0],
+        idx_1: [d_01, 0,  0],
+        idx_2: [x2,   y2, 0]
     }
+    
+    all_idxs = np.delete(np.arange(total_particles),
+                         [idx_0, idx_1, idx_2])
+    
+    highest_n_explored = np.min(all_idxs)
     
     # Initialized to 3 for three connections
     n_connected_dict = {
         0: [],
         1: [],
         2: [],
-        3: [3]
+        3: [highest_n_explored]
     }
     
-    highest_n_explored = 3
-    
     while True:  # Goes until all particles have been studied
+        # Using a first-one-first-out approach
         idx = n_connected_dict[3][0]
         
         # Updated highest_n_explored with idx
@@ -696,39 +737,38 @@ def graph_to_cartesian_positions(graph):
         
         n_connected, idx_connected = get_n_connected(idx, cartesian_positions, edge_indexes, edge_attributes)
         
+        # Set idx in cartesian_positions or else add it to n_connected_dict
         if n_connected >= 3:
-            # Set idx in cartesian_positions
-            idx_0 = idx_connected[0]
-            idx_1 = idx_connected[1]
-            idx_2 = idx_connected[2]
+            # Extract the cartesian coordinates of idx
+            temp_position = find_valid_reference(n_connected, idx_connected, edge_indexes, edge_attributes)
             
-            x2, y2, _ = cartesian_positions[idx_2]
+            # Check if there are enough particles able to locate idx (images make this step more difficult
+            if temp_position is not None:
+                # Generate temporal dictionary with the cartesian coordinates
+                temp_dict = {
+                    idx: temp_position
+                }
+                
+                # Update general dictionary with cartesian coordinates
+                cartesian_positions.update(temp_dict)
+                
+                # Now that cartesian_positions has been increased, n_connected_dict is updated
+                n_connected_dict = update_n_connected_dict(n_connected_dict, idx, edge_indexes, edge_attributes)
+            else:
+                # Make idx wait for new connections to appear
+                n_connected_dict[2].append(idx)
             
-            # Get necessary distances
-            d_01 = get_distance_attribute(idx_0, idx_1, edge_indexes, edge_attributes)
-            d_0n = get_distance_attribute(idx_0, idx,   edge_indexes, edge_attributes)
-            d_1n = get_distance_attribute(idx_1, idx,   edge_indexes, edge_attributes)
-            d_2n = get_distance_attribute(idx_2, idx,   edge_indexes, edge_attributes)
-            
-            temp_dict = {
-                idx: allocate_atom_n(d_01, x2, y2, d_0n, d_1n, d_2n)
-            }
-            
-            cartesian_positions.update(temp_dict)
-            
-            # Now that cartesian_positions has been increased, n_connected_dict is updated
-            n_connected_dict = update_n_connected_dict(n_connected_dict, idx, edge_indexes, edge_attributes)
-            
-            # Remove from n_connected_dict
+            # Remove idx from 3_connected_dict
             n_connected_dict[3].remove(idx)
-        
         else:
             # n_connected_dict is updated adding idx where it belongs to
             n_connected_dict[n_connected].append(idx)
         
+        # Check if all partciles have been already explored
         if highest_n_explored == total_particles:
             break
         
+        # If not, if 3_connected_dict is finished, we add a new particle to be explored
         if not len(n_connected_dict[3]):
             n_connected_dict[3].append(highest_n_explored)
     
@@ -738,7 +778,7 @@ def graph_to_cartesian_positions(graph):
 def update_n_connected_dict(n_connected_dict, idx_0, edge_indexes, edge_attributes):
     for i in np.arange(3+1)[::-1]:  # i = {3, 2, 1, 0}
         for idx_t in n_connected_dict[i]:
-            if get_distance_attribute(idx_0, idx_t, edge_indexes, edge_attributes) is not False:
+            if get_distance_attribute(idx_0, idx_t, edge_indexes, edge_attributes) is not None:
                 # Remove from current list
                 n_connected_dict[i].remove(idx_t)
                 
@@ -751,8 +791,8 @@ def update_n_connected_dict(n_connected_dict, idx_0, edge_indexes, edge_attribut
 def get_n_connected(idx_0, cartesian_positions, edge_indexes, edge_attributes):
     n_connected = 0
     idx_connected = []
-    for idx_t in cartesian_positions.columns:
-        if get_distance_attribute(idx_0, idx_t, edge_indexes, edge_attributes) is not False:
+    for idx_t in list(cartesian_positions.keys()):
+        if get_distance_attribute(idx_0, idx_t, edge_indexes, edge_attributes) is not None:
             n_connected += 1
             idx_connected.append(idx_t)
     
