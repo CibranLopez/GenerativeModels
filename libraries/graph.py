@@ -206,9 +206,9 @@ def get_voronoi_tessellation(atomic_masses, charges, electronegativities, ioniza
     Args:
         structure (pymatgen Structure object): Structure from which the graph is to be generated
     """
-
+    
     # Map all sites to the unit cell; 0 ≤ xyz < 1
-    structure = Structure.from_sites(structure, to_unit_cell=True)
+    structure = Structure.from_sites(temp_structure, to_unit_cell=True)
 
     # Get Voronoi nodes in primitive structure and then map back to the
     # supercell
@@ -225,18 +225,18 @@ def get_voronoi_tessellation(atomic_masses, charges, electronegativities, ioniza
 
     # Voronoi tessellation
     voro = Voronoi(coords)
-    
-    tol = 1e-3
-    edges      = []
-    attributes = []
+
+    tol = 1e-6
+    new_ridge_points = []
     for atoms in voro.ridge_points:  # Atoms are indexes referred to coords
         # Dictionary for storing information about each atom
         atoms_info = {}
-        
+
+        new_atoms = []
         # Check if any of those atoms belong to the unitcell
         for atom_idx in range(2):
             atom = atoms[atom_idx]
-            
+
             # Direct ccordinates from supercell referenced to the primitive cell
             frac_coords = prim_structure.lattice.get_fractional_coords(coords[atom])
 
@@ -249,35 +249,53 @@ def get_voronoi_tessellation(atomic_masses, charges, electronegativities, ioniza
                 # Apply periodic bounday conditions
                 while np.any(frac_coords_uc > 1): frac_coords_uc[np.where(frac_coords_uc > 1)] -= 1
                 while np.any(frac_coords_uc < 0): frac_coords_uc[np.where(frac_coords_uc < 0)] += 1
-            
+
             # Obtain mapping to index in unit cell
             uc_idx = np.argmin(np.linalg.norm(prim_structure.frac_coords - frac_coords_uc, axis=1))
             
-            # Generate dictionary storing relevant information of the atom
-            atom_info = {
-                atom_idx: {
-                    'atom':           atom,
-                    'is_atom_inside': is_atom_inside,
-                    'cart_coords':    coords[atom],
-                    'uc_idx':         uc_idx
-                }
-            }
-            
-            # Update with information of current atom
-            atoms_info.update(atom_info)
+            if is_atom_inside:
+                new_atoms.append(str(uc_idx))
+            else:
+                new_atoms.append('-'+str(uc_idx))
         
-        # Check if any of those belong to the unitcell
-        if atoms_info[0]['is_atom_inside'] or atoms_info[1]['is_atom_inside']:
-            uc_idx_x = atoms_info[0]['uc_idx']
-            uc_idx_y = atoms_info[1]['uc_idx']
-            
-            cart_coords_x = atoms_info[0]['cart_coords']
-            cart_coords_y = atoms_info[1]['cart_coords']
-            
-            edges.append([uc_idx_x,
-                          uc_idx_y])
-            
-            attributes.append(np.linalg.norm(cart_coords_x - cart_coords_y))
+        distance = np.linalg.norm(coords[atoms[1]] - coords[atoms[0]])
+        new_atoms.append(distance)
+        new_atoms.append(atoms[0])
+        new_atoms.append(atoms[1])
+        
+        new_ridge_points.append(new_atoms)
+    
+    # Delete those edges which only contain images
+    to_delete = []
+    for k in range(len(new_ridge_points)):
+        pair = new_ridge_points[k, :2]
+        if (pair[0][0] == '-') and (pair[1][0] == '-'):
+            to_delete.append(k)
+    new_ridge_points = np.delete(new_ridge_points, to_delete, axis=0)
+    
+    edges      = []
+    attributes = []
+    for idx_i in range(n_atoms):
+        for idx_j in np.arange(idx_i+1, n_atoms):
+            to_delete = []
+            for k in range(len(new_ridge_points)):
+                pair = new_ridge_points[k, :2]
+                dist = new_ridge_points[k, 2]
+                
+                if np.any(pair == str(idx_i)):  # Real for idx_i
+                    if pair[0][0] == '-': pair[0] = pair[0][1:]
+                    if pair[1][0] == '-': pair[1] = pair[1][1:]
+                    
+                    if np.any(pair == str(idx_j)):  # Real or image for idx_j
+                        edges.append(np.array(pair, dtype=int))
+                        attributes.append(float(dist))
+                        to_delete.append(k)
+
+            # Delete these added edges, which are no longed needed
+            new_ridge_points = np.delete(new_ridge_points, to_delete, axis=0)
+
+    edges      = np.array(edges)
+    attributes = np.array(attributes)
 
     # Generate nodes from all atoms in structure
     nodes = []
@@ -692,22 +710,45 @@ def graph_to_cartesian_positions(graph):
     # Extract indexes and attributes from the graph
     edge_indexes    = graph.edge_index.detach().cpu().numpy()
     edge_attributes = graph.edge_attr.detach().cpu().numpy()
+
+    # Define the number of atoms in the graph
+    total_particles = len(graph.x)
     
-    to_explore = [0]
+    # Select three initial particles which are interconnected
+    idx_0, idx_1, idx_2 = find_initial_basis(total_particles, edge_indexes, edge_attributes)
     
-    explored = []
+    # Get necessary distances
+    d_01 = get_distance_attribute(idx_0, idx_1, edge_indexes, edge_attributes)
+    d_02 = get_distance_attribute(idx_0, idx_2, edge_indexes, edge_attributes)
+    d_12 = get_distance_attribute(idx_1, idx_2, edge_indexes, edge_attributes)
     
-    connected = []
+    # Reference the first three atoms
+    x2 = (d_01**2 + d_02**2 - d_12**2) / (2 * d_01)
+    y2 = np.sqrt(d_02**2 - x2**2)
     
-    while len(to_explore):  # Goes until all particles have been studied
+    # Impose three particles at the beginning
+    cartesian_positions = {
+        idx_0: [0,    0,  0],
+        idx_1: [d_01, 0,  0],
+        idx_2: [x2,   y2, 0]
+    }
+    
+    all_idxs = np.delete(np.arange(total_particles),
+                         [idx_0, idx_1, idx_2])
+    
+    highest_n_explored = np.min(all_idxs)
+    
+    # Initialized to 3 for three connections
+    n_connected_dict = {
+        0: [],
+        1: [],
+        2: [],
+        3: [highest_n_explored]
+    }
+    
+    while True:  # Goes until all particles have been studied
         # Using a first-one-first-out approach
-        idx = to_explore[0]
-        
-        # Update to_explore list, poping idx out
-        explored.append(idx)
-        
-        # Update to_explore list, poping idx out
-        to_explore = to_explore[1:]
+        idx = n_connected_dict[3][0]
         
         # Updated highest_n_explored with idx
         if idx > highest_n_explored:  # This allows tracking all particles
@@ -715,33 +756,61 @@ def graph_to_cartesian_positions(graph):
         
         n_connected, idx_connected = get_n_connected(idx, cartesian_positions, edge_indexes, edge_attributes)
         
-        # Delete those nodes that have been already explored
-        idx_connected_unexplored = idx_connected.copy()
-        for idx_connected_i in idx_connected:
-            visited = False
+        # Set idx in cartesian_positions or else add it to n_connected_dict
+        if n_connected >= 3:
+            # Extract the cartesian coordinates of idx
+            temp_position = find_valid_reference(n_connected, idx_connected, edge_indexes, edge_attributes)
             
-            for explored_j in explored:
-                if idx_connected_i == explored_j:
-                    visited = True
+            # Check if there are enough particles able to locate idx (images make this step more difficult
+            if temp_position is not None:
+                # Generate temporal dictionary with the cartesian coordinates
+                temp_dict = {
+                    idx: temp_position
+                }
+                
+                # Update general dictionary with cartesian coordinates
+                cartesian_positions.update(temp_dict)
+                
+                # Now that cartesian_positions has been increased, n_connected_dict is updated
+                n_connected_dict = update_n_connected_dict(n_connected_dict, idx, edge_indexes, edge_attributes)
+            else:
+                # Make idx wait for new connections to appear
+                n_connected_dict[2].append(idx)
             
-            if not visited:
-                idx_connected_unexplored.append(idx_connected_i)
+            # Remove idx from 3_connected_dict
+            n_connected_dict[3].remove(idx)
+        else:
+            # n_connected_dict is updated adding idx where it belongs to
+            n_connected_dict[n_connected].append(idx)
         
-        # Add close nodes to to_explore
-        to_explore.append(idx_connected_unexplored)
+        # Check if all partciles have been already explored
+        if highest_n_explored == total_particles:
+            break
         
-        # Add as connected to idx
-        for i in range(n_connected):
-            connected.append([idx, idx_connected_unexplored[i]])
+        # If not, if 3_connected_dict is finished, we add a new particle to be explored
+        if not len(n_connected_dict[3]):
+            n_connected_dict[3].append(highest_n_explored)
     
-    return idx_connected_unexplored
+    return cartesian_positions
 
 
-def get_n_connected(idx_0, n_atoms, edge_indexes, edge_attributes):
+def update_n_connected_dict(n_connected_dict, idx_0, edge_indexes, edge_attributes):
+    for i in np.arange(3+1)[::-1]:  # i = {3, 2, 1, 0}
+        for idx_t in n_connected_dict[i]:
+            if get_distance_attribute(idx_0, idx_t, edge_indexes, edge_attributes) is not None:
+                # Remove from current list
+                n_connected_dict[i].remove(idx_t)
+                
+                if i < 3:  # Else there is no list
+                    # Append to next list
+                    n_connected_dict[i+1].append(idx_t)
+    return n_connected_dict
+
+
+def get_n_connected(idx_0, cartesian_positions, edge_indexes, edge_attributes):
     n_connected = 0
     idx_connected = []
-    idxs_t = np.delete(np.arange(n_atoms), [idx_0])
-    for idx_t in idxs_t:
+    for idx_t in list(cartesian_positions.keys()):
         if get_distance_attribute(idx_0, idx_t, edge_indexes, edge_attributes) is not None:
             n_connected += 1
             idx_connected.append(idx_t)
