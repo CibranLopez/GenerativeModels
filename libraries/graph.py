@@ -7,10 +7,15 @@ import torch
 import sys
 import itertools
 
-from pymatgen.core.structure       import Structure
-from scipy.spatial                 import Voronoi
-from torch.nn                      import Linear
-from torch_geometric.nn            import GCNConv, GraphConv
+from pymatgen.io.vasp.inputs import Poscar
+from pymatgen.core.structure import Structure
+from scipy.spatial           import Voronoi
+from torch.nn                import Linear
+from torch_geometric.nn      import GCNConv, GraphConv
+
+import sys
+sys.path.append('../MP')
+import MP_library as MPL
 
 # Checking if pytorch can run in GPU, else CPU
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -21,10 +26,10 @@ def get_atoms_in_box(particle_types, composition, cell, atomic_masses, charges, 
 
     Args:
         particle_types      (list): type of particles (0, 1...).
-        atomic_masses       (dict):
-        charges             (dict):
-        electronegativities (dict):
-        ionization_energies (dict):
+        atomic_masses       (dict)
+        charges             (dict)
+        electronegativities (dict)
+        ionization_energies (dict)
         positions           (list): direc coordinates of particles.
         L                   (list): size of the box in each direction (x, y, z).
 
@@ -354,7 +359,7 @@ def get_all_linked_edges_and_attributes(nodes, positions):
     return edges, attributes
 
 
-def graph_POSCAR_encoding(structure, encoding_type='voronoi'):
+def graph_POSCAR_encoding(structure, encoding_type='voronoi', distance_threshold=6):
     """Generates a graph parameters from a POSCAR.
     There are two implementations:
         1.- Voronoi tessellation.
@@ -389,11 +394,25 @@ def graph_POSCAR_encoding(structure, encoding_type='voronoi'):
                                                             electronegativities,
                                                             ionization_energies,
                                                             structure)
-        
+    
         # Convert to torch tensors and return
         nodes      = torch.tensor(nodes,      dtype=torch.float)
-        edges      = torch.tensor(edges,      dtype=torch.long).T
+        edges      = torch.tensor(edges,      dtype=torch.long)
         attributes = torch.tensor(attributes, dtype=torch.float)
+    
+    elif encoding_type == 'sphere-images':
+        poscar = Poscar(structure)
+        poscar.write_file('temp-POSCAR')
+        
+        cell, composition, concentration, positions = MPL.information_from_VASPfile('.',
+                                                                                    'temp-POSCAR')
+        
+        nodes, edges, attributes = MPL.graph_POSCAR_encoding(None,
+                                                             cell,
+                                                             composition,
+                                                             concentration,
+                                                             positions,
+                                                             distance_threshold=distance_threshold)
         
     elif encoding_type == 'box':
         """
