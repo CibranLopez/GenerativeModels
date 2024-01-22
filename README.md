@@ -6,6 +6,8 @@ The core technology behind this framework is based on a graph-like representatio
 
 This technology is suitable for different applications: from discovering improved ionic conductors beyond current databases to generating molecules for efficient water splitting.
 
+As well, a quick discussion might be found in our [paper](https://www.overleaf.com/read/cjxhknmhpfpg#d4cb5f).
+
 ## Features
 
 - Generation of new crystal materials beyond the limitations of existing databases
