@@ -2,13 +2,8 @@ import numpy as np
 import torch
 import itertools
 
-from pymatgen.io.vasp.inputs import Poscar
 from pymatgen.core.structure import Structure
 from scipy.spatial           import Voronoi
-
-import sys
-sys.path.append('../MP')
-import MP_library as MPL
 
 # Checking if pytorch can run in GPU, else CPU
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -197,6 +192,46 @@ def get_atoms_in_unitcell(particle_types, composition, cell, atomic_masses, char
     return all_nodes, all_positions, all_species
 
 
+def get_all_linked_edges_and_attributes(nodes, positions):
+    """From a list of nodes and corresponding positions, get all edges and attributes for the graph.
+    Every pair of particles is linked.
+
+    Args:
+        nodes     (list): All nodes in the box.
+        positions (list): Corresponding positions of the particles.
+
+    Returns:
+        edges      (list): Edges linking all pairs of nodes.
+        attributes (list): Weights of the corresponding edges (Euclidean distance).
+    """
+
+    # Get total particles in the box
+    total_particles = len(nodes)
+
+    # Generate indexes, to easily keep track of the distance
+    idxs = np.arange(total_particles)
+
+    # For each node, look for the three closest particles so that each node only has three connections
+    edges = []
+    attributes = []
+    for index_0 in range(total_particles - 1):
+        # Compute the distance of the current particle to all the others
+        distances = np.linalg.norm(positions - positions[index_0], axis=1)
+
+        # Delete distances above the current index (avoiding repeated distances)
+        temp_idxs = idxs[index_0 + 1:]
+        distances = distances[index_0 + 1:]
+
+        # Add all edges
+        edges.append([np.ones(len(temp_idxs)) * index_0, temp_idxs])
+        attributes.append(distances)
+
+    # Concatenating
+    edges = np.concatenate(edges, axis=1)  # Maintaining the order
+    attributes = np.concatenate(attributes)  # Just distance for the previous pairs of links
+    return edges, attributes
+
+
 def get_voronoi_tessellation(atomic_masses, charges, electronegativities, ionization_energies, temp_structure):
     """
     Get the Voronoi nodes of a structure.
@@ -317,46 +352,6 @@ def get_voronoi_tessellation(atomic_masses, charges, electronegativities, ioniza
                 ]
         nodes.append(node)
     return nodes, edges, attributes
-
-
-def get_all_linked_edges_and_attributes(nodes, positions):
-    """From a list of nodes and corresponding positions, get all edges and attributes for the graph.
-    Every pair of particles is linked.
-
-    Args:
-        nodes     (list): All nodes in the box.
-        positions (list): Corresponding positions of the particles.
-
-    Returns:
-        edges      (list): Edges linking all pairs of nodes.
-        attributes (list): Weights of the corresponding edges (Euclidean distance).
-    """
-
-    # Get total particles in the box
-    total_particles = len(nodes)
-    
-    # Generate indexes, to easily keep track of the distance
-    idxs = np.arange(total_particles)
-    
-    # For each node, look for the three closest particles so that each node only has three connections
-    edges = []
-    attributes = []
-    for index_0 in range(total_particles - 1):
-        # Compute the distance of the current particle to all the others
-        distances = np.linalg.norm(positions - positions[index_0], axis=1)
-
-        # Delete distances above the current index (avoiding repeated distances)
-        temp_idxs = idxs[index_0+1:]
-        distances = distances[index_0+1:]
-
-        # Add all edges
-        edges.append([np.ones(len(temp_idxs)) * index_0, temp_idxs])
-        attributes.append(distances)
-
-    # Concatenating
-    edges      = np.concatenate(edges, axis=1)  # Maintaining the order
-    attributes = np.concatenate(attributes)  # Just distance for the previous pairs of links
-    return edges, attributes
 
 
 def get_sphere_images_tessellation(atomic_masses, charges, electronegativities, ionization_energies, structure, distance_threshold=6):
@@ -496,7 +491,8 @@ def graph_POSCAR_encoding(structure, encoding_type='voronoi', distance_threshold
     """Generates a graph parameters from a POSCAR.
     There are two implementations:
         1. Voronoi tessellation.
-        2. Fills the space given a cubic box of dimension [0-Lx, 0-Ly, 0-Lz] considering all necessary images. It links every particle with the rest for the given set of nodes and edges.
+        2. All particles inside a sphere of radius distance_threshold.
+        3. Fills the space given a cubic box of dimension [0-Lx, 0-Ly, 0-Lz] considering all necessary images. It links every particle with the rest for the given set of nodes and edges.
 
     Args:
         structure (pymatgen Structure object): Structure from which the graph is to be generated.
@@ -559,8 +555,8 @@ def graph_POSCAR_encoding(structure, encoding_type='voronoi', distance_threshold
         """
 
     # Convert to torch tensors and return
-    nodes = torch.tensor(nodes, dtype=torch.float)
-    edges = torch.tensor(edges, dtype=torch.long)
+    nodes      = torch.tensor(nodes,      dtype=torch.float)
+    edges      = torch.tensor(edges,      dtype=torch.long)
     attributes = torch.tensor(attributes, dtype=torch.float)
     return nodes, edges, attributes
 

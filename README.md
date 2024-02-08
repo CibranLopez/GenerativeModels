@@ -1,4 +1,4 @@
-# Graph Equivariant Diffusion Models: the Crystal Material Generation TestCase
+# Graph equivariant diffusion models: the crystal material generation testcase
 
 This project introduces a novel framework for generating new crystal materials using equivariant diffusion models through a graph-like representation of data. This offers a powerful approach to surpass the limitations of existing databases by maximizing arbitrary targets such as conductivity, absorption, and more, thanks to enhancing local features of particles. The generated crystals demonstrate remarkable thermodynamic stability, compared against the Materials Project database, utilizing the convex-hull approach. 
 
