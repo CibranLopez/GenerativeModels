@@ -1,17 +1,10 @@
-import numpy               as np
-import matplotlib.pyplot   as plt
-import torch.nn.functional as F
-import torch.nn            as nn
-import networkx            as nx
+import numpy as np
 import torch
-import sys
 import itertools
 
 from pymatgen.io.vasp.inputs import Poscar
 from pymatgen.core.structure import Structure
 from scipy.spatial           import Voronoi
-from torch.nn                import Linear
-from torch_geometric.nn      import GCNConv, GraphConv
 
 import sys
 sys.path.append('../MP')
@@ -30,7 +23,7 @@ def get_atoms_in_box(particle_types, composition, cell, atomic_masses, charges, 
         charges             (dict)
         electronegativities (dict)
         ionization_energies (dict)
-        positions           (list): direc coordinates of particles.
+        positions           (list): direct coordinates of particles.
         L                   (list): size of the box in each direction (x, y, z).
 
     Returns:
@@ -74,12 +67,12 @@ def get_atoms_in_box(particle_types, composition, cell, atomic_masses, charges, 
                 alpha_k = 1
                 while True:
                     # Move to the corresponding image and convert to cartesian distances
-                    position_cartesian = np.dot(position_0 + [i, j, k], cell)
+                    position_cartesian = np.dot(position_0 + [i, j, k], structure.lattice.matrix)
                     
                     new_distance = get_distance_to_box(position_cartesian, L)
                     if new_distance == 0:
                         # Append this particle as one inside the desired region
-                        # Afterwards, we use this data to construct edge connections
+                        # Afterward, we use this data to construct edge connections
                         all_nodes.append(node)
                         all_positions.append(position_cartesian)
                         all_species.append(species_name)
@@ -129,7 +122,7 @@ def get_atoms_in_box(particle_types, composition, cell, atomic_masses, charges, 
 
 
 def get_distance_to_box(position_cartesian, L):
-    """Computes the euclidean distance between a given point and a box of shape [Lx, Ly, Lz].
+    """Computes the Euclidean distance between a given point and a box of shape [Lx, Ly, Lz].
     
     Args:
         position_cartesian (ndarray) Cartesian coordinates of the point.
@@ -155,11 +148,13 @@ def get_atoms_in_unitcell(particle_types, composition, cell, atomic_masses, char
 
     Args:
         particle_types      (list): type of particles (0, 1...).
+        composition
+        cell
         atomic_masses       (dict):
         charges             (dict):
         electronegativities (dict):
         ionization_energies (dict):
-        positions           (list): direc coordinates of particles.
+        positions           (list): direct coordinates of particles.
 
     Returns:
         all_nodes     (list): features of each node in the box.
@@ -195,21 +190,26 @@ def get_atoms_in_unitcell(particle_types, composition, cell, atomic_masses, char
         position_cartesian_0 = np.dot(position_0, cell)
 
         # Append this particle, which belong to the unit cell
-        # Afterwards, we use this data to construct edge connections
+        # Afterward, we use this data to construct edge connections
         all_nodes.append(node)
         all_positions.append(position_cartesian_0)
         all_species.append(species_name)
     return all_nodes, all_positions, all_species
 
 
-def get_voronoi_tessellation(atomic_masses, charges, electronegativities, ionization_energies, structure):
+def get_voronoi_tessellation(atomic_masses, charges, electronegativities, ionization_energies, temp_structure):
     """
     Get the Voronoi nodes of a structure.
     Templated from the TopographyAnalyzer class, added to pymatgen.analysis.defects.utils by Yiming Chen, but now deleted.
     Modified to map down to primitive, do Voronoi analysis, then map back to original supercell; much more efficient.
+    See commit 8b78474 'Generative models (basic example).ipynb'.
 
     Args:
-        structure (pymatgen Structure object): Structure from which the graph is to be generated
+        atomic_masses
+        charges
+        electronegativities
+        ionization_energies
+        temp_structure (pymatgen Structure object): Structure from which the graph is to be generated
     """
     
     # Map all sites to the unit cell; 0 ≤ xyz < 1
@@ -242,7 +242,7 @@ def get_voronoi_tessellation(atomic_masses, charges, electronegativities, ioniza
         for atom_idx in range(2):
             atom = atoms[atom_idx]
 
-            # Direct ccordinates from supercell referenced to the primitive cell
+            # Direct coordinates from supercell referenced to the primitive cell
             frac_coords = prim_structure.lattice.get_fractional_coords(coords[atom])
 
             is_atom_inside = True
@@ -251,7 +251,7 @@ def get_voronoi_tessellation(atomic_masses, charges, electronegativities, ioniza
                 # atom_x is not inside
                 is_atom_inside = False
 
-                # Apply periodic bounday conditions
+                # Apply periodic boundary conditions
                 while np.any(frac_coords_uc > 1): frac_coords_uc[np.where(frac_coords_uc > 1)] -= 1
                 while np.any(frac_coords_uc < 0): frac_coords_uc[np.where(frac_coords_uc < 0)] += 1
 
@@ -280,8 +280,8 @@ def get_voronoi_tessellation(atomic_masses, charges, electronegativities, ioniza
     
     edges      = []
     attributes = []
-    for idx_i in range(n_atoms):
-        for idx_j in np.arange(idx_i+1, n_atoms):
+    for idx_i in range(temp_structure.num_sites):
+        for idx_j in np.arange(idx_i+1, temp_structure.num_sites):
             to_delete = []
             for k in range(len(new_ridge_points)):
                 pair = new_ridge_points[k, :2]
@@ -329,7 +329,7 @@ def get_all_linked_edges_and_attributes(nodes, positions):
 
     Returns:
         edges      (list): Edges linking all pairs of nodes.
-        attributes (list): Weights of the corresponding edges (euclidean distance).
+        attributes (list): Weights of the corresponding edges (Euclidean distance).
     """
 
     # Get total particles in the box
@@ -359,11 +359,144 @@ def get_all_linked_edges_and_attributes(nodes, positions):
     return edges, attributes
 
 
+def get_sphere_images_tessellation(atomic_masses, charges, electronegativities, ionization_energies, structure, distance_threshold=6):
+    """Gets the distances by pairs of particles, considering images with periodic boundary conditions (PBC).
+
+    Args:
+        atomic_masses
+        charges
+        electronegativities
+        ionization_energies
+        structure          (pymatgen Structure object): Structure from which the graph is to be generated
+        distance_threshold (float, optional):           The distance threshold for edge creation (default is 6).
+
+    Returns:
+        nodes      (Tensor): A tensor containing node attributes.
+        edges      (Tensor): A tensor containing edge indices.
+        attributes (Tensor): A tensor containing edge attributes (distances).
+    """
+
+    # Extract direct positions, composition and concentration as lists
+    positions     = np.array([site.frac_coords for site in structure.sites])
+    composition   = [element.symbol for element in structure.composition.elements]
+    concentration = np.array([sum(site.species_string == element for site in structure.sites) for element in composition])
+
+    # Counting number of particles
+    total_particles = np.sum(concentration)
+
+    # Generating graph structure, getting particle types
+    particle_types = []
+    for i in range(len(composition)):
+        particle_types += [i] * concentration[i]
+
+    # Adding nodes and edges.
+    nodes = []
+    edges = []
+    attributes = []
+    for index_0 in range(total_particles):
+        # Get particle type (index of type wrt composition in POSCAR)
+        particle_type = particle_types[index_0]
+
+        # Name of the current species
+        species_name = composition[particle_type]
+
+        # Adding the nodes (mass, charge, electronegativity and ionization energies)
+        nodes.append([float(atomic_masses[species_name]),
+                      float(charges[species_name]),
+                      float(electronegativities[species_name]),
+                      float(ionization_energies[species_name])]
+                     )
+
+        # Get the initial position
+        position_0 = positions[index_0]
+        position_cartesian_0 = np.dot(position_0, structure.lattice.matrix)
+
+        # Explore images of all particles in the system
+        # Starting on index_0, thus exploring possible images with itself (except for i,j,k=0, exact same particle)
+        for index_i in np.arange(index_0, total_particles):
+            # Get the initial position
+            position_i = positions[index_i]
+
+            reference_distance_i = np.NaN  # So it outputs False when first compared with another distance
+            i = 0
+            alpha_i = 1
+            while True:
+                minimum_distance_i   = np.NaN
+                reference_distance_j = np.NaN
+                j = 0
+                alpha_j = 1
+                while True:
+                    minimum_distance_j   = np.NaN
+                    reference_distance_k = np.NaN
+                    k = 0
+                    alpha_k = 1
+                    while True:
+                        # Move to the corresponding image and convert to cartesian distances
+                        position_cartesian_i = np.dot(position_i + [i, j, k], structure.lattice.matrix)
+
+                        # New distance as Euclidean distance between both reference and new image particle
+                        new_distance = np.linalg.norm([position_cartesian_0 - position_cartesian_i])
+
+                        # Condition that remove exact same particle
+                        same_index_condition     = (index_0 == index_i)
+                        all_index_null_condition = np.all([i, j, k] == [0]*3)
+                        same_particle_condition  = (same_index_condition and all_index_null_condition)
+
+                        # Applying threshold to images
+                        if (new_distance <= distance_threshold) and not same_particle_condition:
+                            # Append this point as a edge connection to particle 0
+                            edges.append([index_0, index_i])
+                            attributes.append([new_distance])
+
+                        # Change direction or update i,j if the box is far
+                        elif new_distance > reference_distance_k:
+                            # Explore other direction or cancel
+                            if alpha_k == 1:
+                                k = 0
+                                alpha_k = -1
+                            else:
+                                break
+
+                        reference_distance_k = new_distance
+                        k += alpha_k
+
+                        if not minimum_distance_j <= reference_distance_k:
+                            minimum_distance_j = reference_distance_k
+
+                    # If k worked fine, j is fine as well thus continue; else, explore other direction or cancel
+                    if minimum_distance_j > reference_distance_j:
+                        if alpha_j == 1:
+                            j = 0
+                            alpha_j = -1
+                        else:
+                            break
+
+                    # Update j
+                    j += alpha_j
+                    reference_distance_j = minimum_distance_j
+
+                    if not minimum_distance_i <= reference_distance_j:
+                        minimum_distance_i = reference_distance_j
+
+                # If j did not work fine, explore other direction or cancel
+                if minimum_distance_i > reference_distance_i:
+                    if alpha_i == 1:
+                        i = 0
+                        alpha_i = -1
+                    else:
+                        break
+
+                # Update i
+                i += alpha_i
+                reference_distance_i = minimum_distance_i
+    return nodes, edges, attributes
+
+
 def graph_POSCAR_encoding(structure, encoding_type='voronoi', distance_threshold=6):
     """Generates a graph parameters from a POSCAR.
     There are two implementations:
-        1.- Voronoi tessellation.
-        2.- Fills the space of a cubic box of dimension [0-Lx, 0-Ly, 0-Lz] considering all necessary images. It links every particle with the rest for the given set of nodes and edges.
+        1. Voronoi tessellation.
+        2. Fills the space given a cubic box of dimension [0-Lx, 0-Ly, 0-Lz] considering all necessary images. It links every particle with the rest for the given set of nodes and edges.
 
     Args:
         structure (pymatgen Structure object): Structure from which the graph is to be generated.
@@ -394,25 +527,15 @@ def graph_POSCAR_encoding(structure, encoding_type='voronoi', distance_threshold
                                                             electronegativities,
                                                             ionization_energies,
                                                             structure)
-    
-        # Convert to torch tensors and return
-        nodes      = torch.tensor(nodes,      dtype=torch.float)
-        edges      = torch.tensor(edges,      dtype=torch.long)
-        attributes = torch.tensor(attributes, dtype=torch.float)
-    
+
     elif encoding_type == 'sphere-images':
-        poscar = Poscar(structure)
-        poscar.write_file('temp-POSCAR')
-        
-        cell, composition, concentration, positions = MPL.information_from_VASPfile('.',
-                                                                                    'temp-POSCAR')
-        
-        nodes, edges, attributes = MPL.graph_POSCAR_encoding(None,
-                                                             cell,
-                                                             composition,
-                                                             concentration,
-                                                             positions,
-                                                             distance_threshold=distance_threshold)
+        # Get edges and attributes for the corresponding tessellation
+        nodes, edges, attributes = get_sphere_images_tessellation(atomic_masses,
+                                                                  charges,
+                                                                  electronegativities,
+                                                                  ionization_energies,
+                                                                  structure,
+                                                                  distance_threshold=distance_threshold)
         
     elif encoding_type == 'box':
         """
@@ -433,12 +556,12 @@ def graph_POSCAR_encoding(structure, encoding_type='voronoi', distance_threshold
 
         # Get edges and attributes for the corresponding nodes (all linked to each other)
         edges, attributes = get_all_linked_edges_and_attributes(all_nodes, all_positions)
-        
-        # Convert to torch tensors and return
-        nodes      = torch.tensor(nodes,      dtype=torch.float)
-        edges      = torch.tensor(edges,      dtype=torch.long)
-        attributes = torch.tensor(attributes, dtype=torch.float)
         """
+
+    # Convert to torch tensors and return
+    nodes = torch.tensor(nodes, dtype=torch.float)
+    edges = torch.tensor(edges, dtype=torch.long)
+    attributes = torch.tensor(attributes, dtype=torch.float)
     return nodes, edges, attributes
 
 
@@ -476,7 +599,7 @@ def discretize_graph(graph):
         graph (torch_geometric.data.Data): The initial graph structure with continuous node embeddings.
 
     Returns:
-        new_graph (torch_geometric.data.Data): The modified graph with closest valid node embeddings based on the periodic table.
+        new_graph (torch_geometric.data.Data): The modified graph with the most valid node embeddings based on the periodic table.
     """
 
     # Clone the input graph to preserve the original structure
@@ -621,237 +744,6 @@ def POSCAR_graph_encoding(graph, lattice_vectors, file_name='POSCAR', POSCAR_nam
         np.savetxt(POSCAR_file, POSCAR_positions, delimiter=' ')
 
     return POSCAR_file
-
-
-def allocate_atom_n(d_01, x2, y2, d_0n, d_1n, d_2n):
-    """Calculate the coordinates of atom 'n' based on geometric constraints.
-
-    Args:
-        d_01 (float): Distance between atoms '0' and '1'.
-        x2   (float): x-coordinate of atom '2'.
-        y2   (float): y-coordinate of atom '2'.
-        d_0n (float): Distance between atoms '0' and 'n'.
-        d_1n (float): Distance between atoms '1' and 'n'.
-        d_2n (float): Distance between atoms '2' and 'n'.
-
-    Returns:
-        list: A list containing the x, y, and z coordinates of atom 'n'.
-    """
-    
-    # Calculate x-coordinate of atom 'n'
-    xn = (d_01**2 + d_0n**2 - d_1n**2) / (2 * d_01)
-    
-    # Calculate y-coordinate of atom 'n'
-    yn = (d_1n**2 - d_2n**2 - d_01**2 + 2 * xn * d_01 + x2**2 - 2 * xn * x2 + y2**2) / (2 * y2)
-    
-    # Calculate z-coordinate of atom 'n'
-    zn_square = d_0n**2 - xn**2 - yn**2
-    if zn_square > -1e-4:  # Accounting for numerical errors
-        zn = np.sqrt(zn_square)
-        return [xn, yn, zn]
-    return None
-
-
-def get_distance_attribute(index0, index1, edge_indexes, edge_attributes):
-    """Get the distance attribute between two nodes with given indices.
-
-    Args:
-        index0          (int):        Index of the first node.
-        index1          (int):        Index of the second node.
-        edge_indexes    (np.ndarray): Array containing indices of connected nodes for each edge.
-        edge_attributes (np.ndarray): Array containing attributes corresponding to each edge.
-
-    Returns:
-        float: The distance attribute between the two nodes.
-        False if index0, index1 not linked.
-    """
-    
-    # Create a mask to find matching edges
-    mask_direct  = (edge_indexes[0] == index0) & (edge_indexes[1] == index1)
-    mask_reverse = (edge_indexes[0] == index1) & (edge_indexes[1] == index0)
-    
-    # Check if any edge satisfies the conditions
-    matching_edge_indices = np.where(mask_direct | mask_reverse)[0]
-    
-    if len(matching_edge_indices) == 0:
-        return None  # The pair is not linked
-    
-    # Get the distance attribute from the first matching edge
-    distance_attribute = edge_attributes[matching_edge_indices[0]]
-    
-    return distance_attribute
-
-
-def find_initial_basis(total_particles, edge_indexes, edge_attributes):
-    for idx_0 in range(total_particles):
-        for idx_1 in np.arange(idx_0+1, total_particles):
-            for idx_2 in np.arange(idx_1+1, total_particles):
-                condition_01 = (get_distance_attribute(idx_0, idx_1, edge_indexes, edge_attributes) is not None)
-                condition_12 = (get_distance_attribute(idx_1, idx_2, edge_indexes, edge_attributes) is not None)
-                condition_02 = (get_distance_attribute(idx_0, idx_2, edge_indexes, edge_attributes) is not None)
-                if condition_01 and condition_12 and condition_02:
-                    return idx_0, idx_1, idx_2
-
-
-def find_valid_reference(n_connected, idx_connected, edge_indexes, edge_attributes):
-    for i in range(n_connected):
-        for j in np.arange(i+1, n_connected):
-            for k in np.arange(j+1, n_connected):
-                idx_0 = idx_connected[i]
-                idx_1 = idx_connected[j]
-                idx_2 = idx_connected[k]
-
-                x2, y2, _ = cartesian_positions[idx_2]
-                
-                # Get necessary distances
-                d_01 = get_distance_attribute(idx_0, idx_1, edge_indexes, edge_attributes)
-                d_0n = get_distance_attribute(idx_0, idx,   edge_indexes, edge_attributes)
-                d_1n = get_distance_attribute(idx_1, idx,   edge_indexes, edge_attributes)
-                d_2n = get_distance_attribute(idx_2, idx,   edge_indexes, edge_attributes)
-                
-                temp_position = allocate_atom_n(d_01, x2, y2, d_0n, d_1n, d_2n)
-                
-                if temp_position is not None:
-                    return temp_position
-
-
-def graph_to_cartesian_positions(graph):
-    """Calculate the positions of atoms in a molecular graph based on given distances, in cartesian coordinates.
-    The graph is assumed to be self-consistent (all lenghts to be correct), and with a Voronoi tessellation.
-
-    Args:
-        graph (torch_geometric.data.Data): The input graph containing edge indexes and attributes.
-
-    Returns:
-        dict: A dictionary of atom positions in the format [x, y, z] for each atomic index, in angstroms.
-    """
-    
-    # Extract indexes and attributes from the graph
-    edge_indexes    = graph.edge_index.detach().cpu().numpy()
-    edge_attributes = graph.edge_attr.detach().cpu().numpy()
-
-    # Define the number of atoms in the graph
-    total_particles = len(graph.x)
-    
-    # Select three initial particles which are interconnected
-    idx_0, idx_1, idx_2 = find_initial_basis(total_particles, edge_indexes, edge_attributes)
-    
-    # Get necessary distances
-    d_01 = get_distance_attribute(idx_0, idx_1, edge_indexes, edge_attributes)
-    d_02 = get_distance_attribute(idx_0, idx_2, edge_indexes, edge_attributes)
-    d_12 = get_distance_attribute(idx_1, idx_2, edge_indexes, edge_attributes)
-    
-    # Reference the first three atoms
-    x2 = (d_01**2 + d_02**2 - d_12**2) / (2 * d_01)
-    y2 = np.sqrt(d_02**2 - x2**2)
-    
-    # Impose three particles at the beginning
-    cartesian_positions = {
-        idx_0: [0,    0,  0],
-        idx_1: [d_01, 0,  0],
-        idx_2: [x2,   y2, 0]
-    }
-    
-    all_idxs = np.delete(np.arange(total_particles),
-                         [idx_0, idx_1, idx_2])
-    
-    highest_n_explored = np.min(all_idxs)
-    
-    # Initialized to 3 for three connections
-    n_connected_dict = {
-        0: [],
-        1: [],
-        2: [],
-        3: [highest_n_explored]
-    }
-    
-    while True:  # Goes until all particles have been studied
-        # Using a first-one-first-out approach
-        idx = n_connected_dict[3][0]
-        
-        # Updated highest_n_explored with idx
-        if idx > highest_n_explored:  # This allows tracking all particles
-            highest_n_explored = idx
-        
-        n_connected, idx_connected = get_n_connected(idx, cartesian_positions, edge_indexes, edge_attributes)
-        
-        # Set idx in cartesian_positions or else add it to n_connected_dict
-        if n_connected >= 3:
-            # Extract the cartesian coordinates of idx
-            temp_position = find_valid_reference(n_connected, idx_connected, edge_indexes, edge_attributes)
-            
-            # Check if there are enough particles able to locate idx (images make this step more difficult
-            if temp_position is not None:
-                # Generate temporal dictionary with the cartesian coordinates
-                temp_dict = {
-                    idx: temp_position
-                }
-                
-                # Update general dictionary with cartesian coordinates
-                cartesian_positions.update(temp_dict)
-                
-                # Now that cartesian_positions has been increased, n_connected_dict is updated
-                n_connected_dict = update_n_connected_dict(n_connected_dict, idx, edge_indexes, edge_attributes)
-            else:
-                # Make idx wait for new connections to appear
-                n_connected_dict[2].append(idx)
-            
-            # Remove idx from 3_connected_dict
-            n_connected_dict[3].remove(idx)
-        else:
-            # n_connected_dict is updated adding idx where it belongs to
-            n_connected_dict[n_connected].append(idx)
-        
-        # Check if all partciles have been already explored
-        if highest_n_explored == total_particles:
-            break
-        
-        # If not, if 3_connected_dict is finished, we add a new particle to be explored
-        if not len(n_connected_dict[3]):
-            n_connected_dict[3].append(highest_n_explored)
-    
-    return cartesian_positions
-
-
-def update_n_connected_dict(n_connected_dict, idx_0, edge_indexes, edge_attributes):
-    for i in np.arange(3+1)[::-1]:  # i = {3, 2, 1, 0}
-        for idx_t in n_connected_dict[i]:
-            if get_distance_attribute(idx_0, idx_t, edge_indexes, edge_attributes) is not None:
-                # Remove from current list
-                n_connected_dict[i].remove(idx_t)
-                
-                if i < 3:  # Else there is no list
-                    # Append to next list
-                    n_connected_dict[i+1].append(idx_t)
-    return n_connected_dict
-
-
-def get_n_connected(idx_0, cartesian_positions, edge_indexes, edge_attributes):
-    n_connected = 0
-    idx_connected = []
-    for idx_t in list(cartesian_positions.keys()):
-        if get_distance_attribute(idx_0, idx_t, edge_indexes, edge_attributes) is not None:
-            n_connected += 1
-            idx_connected.append(idx_t)
-    
-    return n_connected, idx_connected
-
-
-def lattice_vectors_from_cartesian_positions(graph, cartesian_positions):
-    """Calculate lattice vectors as a regression problem given their cartesian positions.
-
-    Args:
-        graph               (torch_geometric.data.Data): The input graph containing edge indexes and attributes.
-        cartesian_positions (dict):                      A dictionary of atom positions in the format [x, y, z] for each atomic index, in angstroms.
-
-    Returns:
-        3x3 np.ndarray: Simulation cell (lattice vectors).
-    
-    x + (alpha, beta, gamma) (a1, a2, a3) = x'
-    """
-    
-
-    return lattice_vectors
 
 
 def check_graph_validity(graph):

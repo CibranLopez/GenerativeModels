@@ -8,7 +8,7 @@ import sys
 
 from torch_geometric.data          import Data
 from torch.nn                      import Linear
-from torch_geometric.nn            import GCNConv, GraphConv
+from torch_geometric.nn            import GraphConv
 from torch_geometric.utils.convert import to_networkx
 
 # Checking if pytorch can run in GPU, else CPU
@@ -133,13 +133,15 @@ def diffusion_step(graph_0, t, n_diffusing_steps, s):
     with G a graph and N noise.
 
     Args:
-        graph_0 (torch_geometric.data.Data): Graph which is to be diffused (step t-1).
-
+        graph_0           (torch_geometric.data.Data): Graph which is to be diffused (step t-1).
+        t                 (float):                     Step of the diffusion process.
+        n_diffusing_steps (int):                       Number of diffusion steps.
+        s                 (float):                     Parameter which controls the decay of alpha with t.
     Returns:
         graph_t (torch_geometric.data.Data): Diffused graph (step t).
     """
 
-    # Clone graph that we are diffusing (not extrictly necessary)
+    # Clone graph that we are diffusing (not strictly necessary)
     graph_t = graph_0.clone()
 
     # Number of nodes and features in the graph
@@ -241,7 +243,7 @@ def denoising_step(graph_t, epsilon, t, n_t_steps, s, sigma):
 
     Args:
         graph_t  (torch_geometric.data.Data): Graph which is to be denoised (step t).
-        epsilon  (torch_geometric.data.Data): Predicted noise to substract.
+        epsilon  (torch_geometric.data.Data): Predicted noise to subtract.
         t        (int):                       Step of the diffusion process.
         n_t_steps (int):                      Number of diffusive steps.
         s        (float):                     Parameter which controls the decay of alpha with t.
@@ -343,7 +345,7 @@ def get_graph_losses(graph1, graph2):
         edge_loss (torch.Tensor): Loss value for edge attributes between the two graphs.
     """
 
-    # Initialize loss criterions for nodes and edges
+    # Initialize loss criteria for nodes and edges
     node_criterion = nn.MSELoss()
     edge_criterion = nn.MSELoss()
 
@@ -390,7 +392,7 @@ def add_features_to_graph(graph_0, node_features):
 
     Args:
         graph_0       (torch_geometric.data.Data): The input graph containing edge indexes and attributes.
-        node_features (torch.array of size 2):     Information to be added to the graph (target, step of the diffusing/denoising process, etc).
+        node_features (torch.array of size 2):     Information to be added to the graph (target, step of the diffusing/denoising process, etc.).
 
     Returns:
         graph (torch_geometric.data.Data): Updated graph, with node_features as a new node feature for every atom.
@@ -420,6 +422,6 @@ def interpolate_graphs(dataset):
         graph (torch_geometric.data.Data): Interpolated graph structure.
     """
     
-    graph_0 = zeros_like(dataset[0])
+    #graph_0 = zeros_like(dataset[0])
     
     return graph_0

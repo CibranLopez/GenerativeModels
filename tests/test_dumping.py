@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 import unittest
-import argparse
 import numpy as np
 
 import GM_library as GML
