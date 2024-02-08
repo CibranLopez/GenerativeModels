@@ -4,14 +4,15 @@ import torch
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
-def standardize_dataset(dataset):
+def standardize_dataset(dataset, transformation=None):
     """Standardizes a given dataset (both nodes features and edge attributes).
     Typically, a normal distribution is applied, although it be easily modified to apply other distributions.
 
     Currently: normal distribution.
 
     Args:
-        dataset (list): List containing graph structures.
+        dataset        (list): List containing graph structures.
+        transformation (str):  Type of transformation strategy for edge attributes (None, 'inverse-quadratic').
 
     Returns:
         Tuple: A tuple containing the normalized dataset and parameters needed to re-scale predicted properties.
@@ -25,6 +26,11 @@ def standardize_dataset(dataset):
     # Number of graphs
     n_graphs   = len(dataset_std)
     n_features = dataset_std[0].num_node_features
+    
+    # Check if non-linear standardization
+    if transformation == 'inverse-quadratic':
+        for data in dataset_std:
+            data.edge_attr = 1 / data.edge_attr.pow(2)
     
     # Compute means
     target_mean = sum([data.y.mean()         for data in dataset_std]) / n_graphs
