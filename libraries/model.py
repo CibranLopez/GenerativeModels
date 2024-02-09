@@ -273,17 +273,19 @@ def denoising_step(graph_t, epsilon, t, n_t_steps, s, sigma):
 
 class nGCNN(torch.nn.Module):
     """Graph convolution neural network for the prediction of node embeddings.
+    The network consists of recursive convolutional layers, which input node features plus graph level embeddings
+    while it outputs updated node level embeddings.
     """
 
-    def __init__(self, features_channels, pdropout):
+    def __init__(self, n_node_features, n_graph_features, pdropout):
         super(nGCNN, self).__init__()
 
         # Set random seed for reproducibility
         torch.manual_seed(12345)
 
         # Define graph convolution layers
-        self.conv1 = GraphConv(features_channels, 256)  # Introducing node features
-        self.conv2 = GraphConv(256, features_channels)  # Predicting node features
+        self.conv1 = GraphConv(n_node_features+n_graph_features, 256)  # Introducing node features
+        self.conv2 = GraphConv(256, n_node_features)  # Predicting node features
 
         self.pdropout = pdropout
 
@@ -298,15 +300,17 @@ class nGCNN(torch.nn.Module):
 class eGCNN(nn.Module):
     """Graph convolution neural network for the prediction of edge attributes.
     Predictions of the new link arise from the product of the two involved nodes and the previous edge attribute.
+    The network consists of recursive convolutional layers, which input node features plus graph level embeddings
+    and plus previous edge attribute embeddings while it outputs updated attribute embeddings.
     """
 
-    def __init__(self, features_channels, pdropout):
+    def __init__(self, n_node_features, n_graph_features, pdropout):
         super(eGCNN, self).__init__()
 
         # Set random seed for reproducibility
         torch.manual_seed(12345)
 
-        self.linear1 = Linear(features_channels+1, 64)  # Introducing node features + previous edge attribute
+        self.linear1 = Linear(n_node_features+n_graph_features+1, 64)  # Introducing node features + previous edge attribute
         self.linear2 = Linear(64, 1)  # Predicting one single weight
 
         self.pdropout = pdropout
@@ -318,7 +322,7 @@ class eGCNN(nn.Module):
         # Reshape previous_attr tensor to have the same number of dimensions as x
         previous_attr = previous_attr.view(-1, 1)  # Reshapes from [...] to [..., 1]
 
-        # Concatenate the tensors along dimension 1 to get a tensor of size [..., 6]
+        # Concatenate the tensors along dimension 1 to get a tensor of size [..., num_embeddings ~ 6]
         x = torch.cat((x_ij, previous_attr), dim=1)
 
         # Apply linear convolution with ReLU activation function
@@ -335,6 +339,8 @@ class eGCNN(nn.Module):
 
 def get_graph_losses(graph1, graph2):
     """Calculate loss values for node features and edge attributes between two graphs.
+    Depending on the size of the graphs, calculating MSE loss directly might be memory-intensive.
+    Processing that in batches or subsets of nodes/edges can be more appropriate.
 
     Args:
         graph1 (torch_geometric.data.Data): The first input graph.
@@ -401,11 +407,11 @@ def add_features_to_graph(graph_0, node_features):
     graph = graph_0.clone()
     
     # Check that the size of node_features is the expected by the function
-    if len(torch.Tensor.size(node_features)) != 2:
+    if len(torch.Tensor.size(node_features)) != 1:
         sys.exit('Error: node_features does not have the expected size')
     
     # Concatenate tensors along the second dimension (dim=1)
-    new_x = torch.cat((graph.x, node_features[0].unsqueeze(0).repeat(graph.x.size(0), 1)), dim=1)
+    new_x = torch.cat((graph.x, node_features.unsqueeze(0).repeat(graph.x.size(0), 1)), dim=1)
 
     # Update the graph with the new node features
     graph.x = new_x
