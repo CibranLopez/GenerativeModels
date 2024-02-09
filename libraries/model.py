@@ -337,14 +337,15 @@ class eGCNN(nn.Module):
         return x
 
 
-def get_graph_losses(graph1, graph2):
+def get_graph_losses(graph1, graph2, batch_size):
     """Calculate loss values for node features and edge attributes between two graphs.
     Depending on the size of the graphs, calculating MSE loss directly might be memory-intensive.
     Processing that in batches or subsets of nodes/edges can be more appropriate.
 
     Args:
-        graph1 (torch_geometric.data.Data): The first input graph.
-        graph2 (torch_geometric.data.Data): The second input graph.
+        graph1     (torch_geometric.data.Data): The first input graph.
+        graph2     (torch_geometric.data.Data): The second input graph.
+        batch_size (int):                       Size of the data batch, used to compute the MSE loss.
 
     Returns:
         node_loss (torch.Tensor): Loss value for node features between the two graphs.
@@ -362,6 +363,10 @@ def get_graph_losses(graph1, graph2):
     # Calculate the loss for edge attributes by comparing the edge attribute tensors
     edge_loss = edge_criterion(graph1.edge_attr,
                                graph2.edge_attr)
+
+    # Divide by the number of data graphs in the batch
+    node_loss /= batch_size
+    edge_loss /= batch_size
 
     return node_loss, edge_loss
 
