@@ -253,7 +253,7 @@ def denoising_step(graph_t, epsilon, t, n_t_steps, s, sigma):
         graph_0 (torch_geometric.data.Data): Denoised graph (step t-1).
     """
 
-    # Clone graph that we are denoising (not extrictly necessary)
+    # Clone graph that we are denoising (not strictly necessary)
     graph_0 = graph_t.clone()
 
     # Compute alpha_t
@@ -372,7 +372,8 @@ def get_graph_losses(graph1, graph2, batch_size):
 
 
 def get_target_loss(obtained_target, seeked_target):
-    """Calculate the target loss based on obtained and seeked targets. It checks if seeked_target is a specific value or rather a limit
+    """Calculate the target loss based on obtained and seeked targets.
+    It checks if seeked_target is a specific value or rather a limit
 
     Args:
         obtained_target (float):        The obtained target value.
@@ -403,7 +404,8 @@ def add_features_to_graph(graph_0, node_features):
 
     Args:
         graph_0       (torch_geometric.data.Data): The input graph containing edge indexes and attributes.
-        node_features (torch.array of size 2):     Information to be added to the graph (target, step of the diffusing/denoising process, etc.).
+        node_features (torch.array of size 2):     Information to be added to the graph (target,
+                                                   step of the diffusing/denoising process, etc.).
 
     Returns:
         graph (torch_geometric.data.Data): Updated graph, with node_features as a new node feature for every atom.
@@ -430,9 +432,9 @@ def interpolate_graphs(dataset):
         dataset (list): List containing graph structures.
 
     Returns:
-        graph (torch_geometric.data.Data): Interpolated graph structure.
+        interp_dataset (list): List containing interpolated graph structures.
     """
     
     #graph_0 = zeros_like(dataset[0])
     
-    return graph_0
+    return dataset
