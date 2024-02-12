@@ -29,7 +29,7 @@ def get_alpha_t(t, T, s):
         alpha (float): parameter which controls the velocity of diffusion or denoising.
     """
 
-    return torch.tensor((1 - 2 * s) * (1 - (t / T) ** 2) + 2 * s)
+    return torch.tensor((1 - 2 * s) * (1 - (t / T) ** 2) + 2 * s).to(device)
 
 
 def get_random_graph(n_nodes, n_features, in_edge_index=None):
@@ -80,6 +80,9 @@ def get_random_graph(n_nodes, n_features, in_edge_index=None):
     graph = Data(x=x,
                  edge_index=edge_index,
                  edge_attr=edge_attr)
+
+    # Moving data to device
+    graph = graph.to(device)
     return graph
 
 
