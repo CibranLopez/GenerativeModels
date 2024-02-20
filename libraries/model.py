@@ -319,7 +319,7 @@ class eGCNN(nn.Module):
         self.pdropout = pdropout
 
     def forward(self, x_i, x_j, previous_attr):
-        # Dot product between node distances (?)
+        # Dot product between node distances
         x_ij = x_i * x_j  # Of dimension [..., features_channels]
 
         # Reshape previous_attr tensor to have the same number of dimensions as x
