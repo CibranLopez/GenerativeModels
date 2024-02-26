@@ -114,7 +114,7 @@ def diffuse(graph_0, n_diffusing_steps, s=1e-2, plot_steps=False):
             pos            = nx.spring_layout(networkx_graph)
             nx.draw(networkx_graph, pos, with_labels=True, node_size=graph_t.x, font_size=10)
             plt.show()
-        
+
         graph_t, _ = diffusion_step(graph_t, t, n_diffusing_steps, s)
         all_graphs.append(graph_t)
     
@@ -185,36 +185,8 @@ def denoise(graph_t, n_t_steps, node_model, edge_model, s=1e-2, sigma=None, plot
     # Define t_steps as inverse of the diffuse process
     t_steps = np.arange(1, n_t_steps+1)[::-1]
     for t_step in t_steps:
-        # Add t_step information to graph_t
-        t_step_std = (t_step/n_t_steps - 0.5)  # Standard normalization
-        graph_0 = add_features_to_graph(graph_0,
-                                        torch.tensor([[t_step_std]], dtype=torch.float))
-        
-        # Add target information
-        if target is not None:
-            graph_0 = add_features_to_graph(graph_0,
-                                            target)
-
-        # Perform a single forward pass for predicting node features
-        out_x = node_model(graph_0.x,
-                           graph_0.edge_index,
-                           graph_0.edge_attr)
-
-        # Remove t_step information
-        out_x = out_x[:, :-1]
-
-        # Define x_i and x_j as features of every corresponding pair of nodes (same order than attributes)
-        x_i = graph_0.x[graph_0.edge_index[0]]
-        x_j = graph_0.x[graph_0.edge_index[1]]
-
-        # Perform a single forward pass for predicting edge attributes
-        # Introduce previous edge attributes as features as well
-        out_attr = edge_model(x_i, x_j, graph_t.edge_attr)
-
-        # Construct noise graph
-        noise_graph = Data(x=out_x,
-                           edge_index=graph_0.edge_index,
-                           edge_attr=out_attr.ravel())
+        # Predict noise at given time step
+        pred_epsilon_t, _ = predict_noise(g_batch_0, embedding_batch_0, t_step, n_t_steps, node_model, edge_model, alpha_decay, batch_size_0)
         
         # Check if intermediate steps are plotted; then, plot the NetworkX graph
         if plot_steps:
@@ -239,6 +211,56 @@ def denoise(graph_t, n_t_steps, node_model, edge_model, s=1e-2, sigma=None, plot
         nx.draw(networkx_graph, pos, with_labels=True, node_size=graph_0.x, font_size=10)
         plt.show()
     return graph_0, all_graphs
+
+
+def predict_noise(g_batch_t, e_batch_t, embedding_batch_0, t_step_std, node_model, edge_model, alpha_decay, batch_size_0):
+
+
+
+    # Denoise the diffused graph
+    # print(f'Denoising...')
+    for idx in range(batch_size_0):
+        # Add graph-level embedding to graph_t as node embeddings
+        g_batch_t[idx] = add_features_to_graph(g_batch_t[idx],
+                                               embedding_batch_0[idx])  # To match graph.y shape
+
+        # Add t_step information to graph_t as node embeddings
+        g_batch_t[idx] = add_features_to_graph(g_batch_t[idx],
+                                               t_step_std)  # To match graph.y shape, which is 1D
+
+    # Generate batch objects
+    g_batch_t = Batch.from_data_list(g_batch_t)
+    e_batch_t = Batch.from_data_list(e_batch_t)
+
+    # Move data to device
+    g_batch_t = g_batch_t.to(device)
+    e_batch_t = e_batch_t.to(device)
+
+    # Perform a single forward pass for predicting node features
+    out_x = node_model(g_batch_t.x,
+                       g_batch_t.edge_index,
+                       g_batch_t.edge_attr)
+
+    # Remove t_step information
+    out_x = out_x[:, :-1]
+
+    # Define x_i and x_j as features of every corresponding pair of nodes (same order than attributes)
+    x_i = g_batch_t.x[g_batch_t.edge_index[0]]
+    x_j = g_batch_t.x[g_batch_t.edge_index[1]]
+
+    # Perform a single forward pass for predicting edge attributes
+    # Introduce previous edge attributes as features as well
+    out_attr = edge_model(x_i, x_j, g_batch_t.edge_attr)
+
+    # Moving data to device
+    out_x = out_x.to(device)
+    out_attr = out_attr.to(device)
+
+    # Construct noise graph with predicted node features and edge attributes, and previous edge indexes
+    pred_epsilon_t = Data(x=out_x,
+                          edge_index=g_batch_t.edge_index,
+                          edge_attr=out_attr.ravel())
+    return pred_epsilon_t, e_batch_t
 
 
 def denoising_step(graph_t, epsilon, t, n_t_steps, s, sigma):
