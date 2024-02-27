@@ -6,7 +6,7 @@ import networkx            as nx
 import torch
 import sys
 
-from torch_geometric.data          import Data
+from torch_geometric.data          import Data, Batch
 from torch.nn                      import Linear
 from torch_geometric.nn            import GraphConv
 from torch_geometric.utils.convert import to_networkx
@@ -86,11 +86,11 @@ def get_random_graph(n_nodes, n_features, in_edge_index=None):
     return graph
 
 
-def diffuse(graph_0, n_diffusing_steps, s=1e-2, plot_steps=False):
-    """Performs consecutive steps of diffusion in a reference graph.
+def diffuse(batch_0, n_diffusing_steps, s=1e-2, plot_steps=False):
+    """Performs consecutive steps of diffusion in a reference batch of graphs.
 
     Args:
-        graph_0           (torch_geometric.data.Data): Reference graph to be diffused (step t-1).
+        batch_0           (torch_geometric.data.Data): Reference batch of graphs to be diffused (step t-1).
         n_diffusing_steps (int):                       Number of diffusive steps.
         s                 (float):                     Parameter which controls the decay of alpha with t.
         plot_steps        (bool):                      Whether to plot or not each intermediate step.
@@ -98,11 +98,15 @@ def diffuse(graph_0, n_diffusing_steps, s=1e-2, plot_steps=False):
     Returns:
         graph_t (torch_geometric.data.Data): Graph with random node features and edge attributes (step t).
     """
-    
-    graph_t = graph_0.clone()
+
+    # Clone batch of graphs
+    g_batch_t = batch_0.clone()
+
+    # Read number of graphs in batch
+    batch_size_t = g_batch_t.num_graphs
     
     # Save all intermediate graphs as well (sanity check)
-    all_graphs = [graph_t]
+    all_batches = [g_batch_t]
     
     # Define t_steps starting from 1 to n_t_steps+1
     t_steps = np.arange(1, n_diffusing_steps+1)
@@ -110,22 +114,23 @@ def diffuse(graph_0, n_diffusing_steps, s=1e-2, plot_steps=False):
         # Check if intermediate steps are plotted; then, plot the NetworkX graph
         if plot_steps:
             # Convert PyTorch graph to NetworkX graph
-            networkx_graph = to_networkx(graph_t)
+            networkx_graph = to_networkx(g_batch_t[plot_steps])
             pos            = nx.spring_layout(networkx_graph)
-            nx.draw(networkx_graph, pos, with_labels=True, node_size=graph_t.x, font_size=10)
+            nx.draw(networkx_graph, pos, with_labels=True, node_size=g_batch_t[plot_steps].x, font_size=10)
             plt.show()
 
-        graph_t, _ = diffusion_step(graph_t, t, n_diffusing_steps, s)
-        all_graphs.append(graph_t)
+        for idx in range(batch_size_t):
+            g_batch_t[idx], _ = diffusion_step(g_batch_t[idx], t, n_diffusing_steps, s)
+        all_batches.append(g_batch_t)
     
     # Check if intermediate steps are plotted; then, plot the NetworkX graph
     if plot_steps:
         # Convert PyTorch graph to NetworkX graph
-        networkx_graph = to_networkx(graph_t)
+        networkx_graph = to_networkx(g_batch_t[plot_steps])
         pos            = nx.spring_layout(networkx_graph)
-        nx.draw(networkx_graph, pos, with_labels=True, node_size=graph_t.x, font_size=10)
+        nx.draw(networkx_graph, pos, with_labels=True, node_size=g_batch_t[plot_steps].x, font_size=10)
         plt.show()
-    return graph_t, all_graphs
+    return g_batch_t, all_batches
 
 
 def diffusion_step(graph_0, t, n_diffusing_steps, s):
@@ -162,79 +167,104 @@ def diffusion_step(graph_0, t, n_diffusing_steps, s):
     return graph_t, epsilon_t
 
 
-def denoise(graph_t, n_t_steps, node_model, edge_model, s=1e-2, sigma=None, plot_steps=False, target=None):
-    """Performs consecutive steps of diffusion in a reference graph.
+def denoise(batch_t, n_t_steps, node_model, edge_model, s=1e-2, sigma=None, plot_steps=False):
+    """Performs consecutive steps of diffusion in a reference batch of graphs.
 
     Args:
-        graph_t    (torch_geometric.data.Data): Reference graph to be diffused (step t-1).
+        batch_t    (torch_geometric.data.Data): Reference batch of graphs to be denoised (step t-1).
         n_t_steps  (int):                       Number of diffusive steps.
         s          (float):                     Parameter which controls the decay of alpha with t.
         sigma      (float):                     Parameter which controls the amount of noised added when generating.
-        plot_steps (bool):                      Whether to plot or not each intermediate step.
-        target     (torch.array):               Information of the seeked target, to be added to the graph.
+        plot_steps (bool, int):                 Whether to plot each intermediate step, or which graph from batch.
 
     Returns:
         graph_0 (torch_geometric.data.Data): Graph with random node features and edge attributes (step t).
     """
-    
-    graph_0 = graph_t.clone()
-    
-    # Save all intermediate graphs as well (sanity check)
-    all_graphs = [graph_0]
-    
+
+    # Clone batch of graphs
+    g_batch_0 = batch_t.clone()
+
+    # Move batch data to GPU
+    g_batch_0 = g_batch_0.to(device)
+
+    # Read number of graphs in batch
+    batch_size_0 = g_batch_0.num_graphs
+
+    # Save graph-level embeddings
+    embedding_batch_0 = []
+    for idx in range(batch_size_0):
+        embedding_batch_0.append(g_batch_0[idx].y.detach().to(device))
+
+    # Initialize all batches list
+    all_batches = [g_batch_0]
+
     # Define t_steps as inverse of the diffuse process
     t_steps = np.arange(1, n_t_steps+1)[::-1]
     for t_step in t_steps:
-        # Predict noise at given time step
-        pred_epsilon_t, _ = predict_noise(g_batch_0, embedding_batch_0, t_step, n_t_steps, node_model, edge_model, alpha_decay, batch_size_0)
-        
+        # Read time step, which is added to node-level graph embeddings
+        t_step_std = torch.tensor([t_step / n_t_steps - 0.5], dtype=torch.float).to(device)  # Standard normalization
+
+        # Denoise the diffused graph
+        print(f'Denoising...')
+
+        # Add embeddings to noisy graphs (t_step information and graph-level embeddings)
+        for idx in range(batch_size_0):
+            # Add graph-level embedding to graph_t as node embeddings
+            g_batch_0[idx] = add_features_to_graph(g_batch_0[idx],
+                                                   embedding_batch_0[idx])  # To match graph.y shape
+
+            # Add t_step information to graph_t as node embeddings
+            g_batch_0[idx] = add_features_to_graph(g_batch_0[idx],
+                                                   t_step_std)  # To match graph.y shape, which is 1D
+
+        # Generate batch objects
+        g_batch_t = Batch.from_data_list(g_batch_0)
+
+        # Move data to device
+        g_batch_t = g_batch_t.to(device)
+
+        # Predict batch noise at given time step
+        pred_epsilon_t = predict_noise(g_batch_t, node_model, edge_model)
+
         # Check if intermediate steps are plotted; then, plot the NetworkX graph
         if plot_steps:
             # Convert PyTorch graph to NetworkX graph
-            networkx_graph = to_networkx(graph_0)
+            networkx_graph = to_networkx(g_batch_t[plot_steps])
             pos            = nx.spring_layout(networkx_graph)
-            nx.draw(networkx_graph, pos, with_labels=True, node_size=graph_0.x, font_size=10)
+            nx.draw(networkx_graph, pos, with_labels=True, node_size=g_batch_t[plot_steps].x, font_size=10)
             plt.show()
 
-        # Remove t_step information from graph_0
-        graph_0.x = graph_0.x[:, :-1]
+        for idx in range(batch_size_0):
+            # Remove t_step information from graph_0
+            g_batch_0[idx].x = g_batch_0[idx].x[:, :-1]
 
-        # Denoise the graph with the predicted noise
-        graph_0 = denoising_step(graph_0, noise_graph, t_step, n_t_steps, s=s, sigma=sigma)
-        all_graphs.append(graph_0)
+            # Denoise the graph with the predicted noise
+            g_batch_0[idx] = denoising_step(g_batch_0[idx], pred_epsilon_t, t_step, n_t_steps, s=s, sigma=sigma)
+
+        # Append current batch
+        all_batches.append(g_batch_0)
         
     # Check if intermediate steps are plotted; then, plot the NetworkX graph
     if plot_steps:
         # Convert PyTorch graph to NetworkX graph
-        networkx_graph = to_networkx(graph_0)
+        networkx_graph = to_networkx(g_batch_t[plot_steps])
         pos            = nx.spring_layout(networkx_graph)
-        nx.draw(networkx_graph, pos, with_labels=True, node_size=graph_0.x, font_size=10)
+        nx.draw(networkx_graph, pos, with_labels=True, node_size=g_batch_t[plot_steps].x, font_size=10)
         plt.show()
-    return graph_0, all_graphs
+    return g_batch_0, all_batches
 
 
-def predict_noise(g_batch_t, e_batch_t, embedding_batch_0, t_step_std, node_model, edge_model, alpha_decay, batch_size_0):
+def predict_noise(g_batch_t, node_model, edge_model):
+    """Predicts noise given some batch of noisy graphs using specified nmodels
 
+    Args:
+        g_batch_t  (torch_geometric.data.Data): Batch with noisy undirected graphs, consistent with model definitions.
+        node_model (torch.nn.Module):           Model for graph-node prediction.
+        edge_model (torch.nn.Module):           Model for graph-edge prediction.
 
-
-    # Denoise the diffused graph
-    # print(f'Denoising...')
-    for idx in range(batch_size_0):
-        # Add graph-level embedding to graph_t as node embeddings
-        g_batch_t[idx] = add_features_to_graph(g_batch_t[idx],
-                                               embedding_batch_0[idx])  # To match graph.y shape
-
-        # Add t_step information to graph_t as node embeddings
-        g_batch_t[idx] = add_features_to_graph(g_batch_t[idx],
-                                               t_step_std)  # To match graph.y shape, which is 1D
-
-    # Generate batch objects
-    g_batch_t = Batch.from_data_list(g_batch_t)
-    e_batch_t = Batch.from_data_list(e_batch_t)
-
-    # Move data to device
-    g_batch_t = g_batch_t.to(device)
-    e_batch_t = e_batch_t.to(device)
+    Returns:
+        pred_epsilon_t (torch_geometric.data.Data): Predicted noise for batch g_batch_t.
+    """
 
     # Perform a single forward pass for predicting node features
     out_x = node_model(g_batch_t.x,
@@ -253,14 +283,14 @@ def predict_noise(g_batch_t, e_batch_t, embedding_batch_0, t_step_std, node_mode
     out_attr = edge_model(x_i, x_j, g_batch_t.edge_attr)
 
     # Moving data to device
-    out_x = out_x.to(device)
+    out_x    = out_x.to(device)
     out_attr = out_attr.to(device)
 
     # Construct noise graph with predicted node features and edge attributes, and previous edge indexes
     pred_epsilon_t = Data(x=out_x,
                           edge_index=g_batch_t.edge_index,
                           edge_attr=out_attr.ravel())
-    return pred_epsilon_t, e_batch_t
+    return pred_epsilon_t
 
 
 def denoising_step(graph_t, epsilon, t, n_t_steps, s, sigma):
