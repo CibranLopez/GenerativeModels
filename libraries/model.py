@@ -100,13 +100,7 @@ def diffuse(batch_0, n_diffusing_steps, s=1e-2, plot_steps=False):
     """
 
     # Clone batch of graphs
-    g_batch_t = batch_0.clone()
-
-    # Read number of graphs in batch
-    batch_size_t = g_batch_t.num_graphs
-    
-    # Save all intermediate graphs as well (sanity check)
-    all_batches = [g_batch_t]
+    batch_t = batch_0.clone()
     
     # Define t_steps starting from 1 to n_t_steps+1
     t_steps = np.arange(1, n_diffusing_steps+1)
@@ -117,23 +111,21 @@ def diffuse(batch_0, n_diffusing_steps, s=1e-2, plot_steps=False):
         # Check if intermediate steps are plotted; then, plot the NetworkX graph
         if plot_steps:
             # Convert PyTorch graph to NetworkX graph
-            networkx_graph = to_networkx(g_batch_t[plot_steps])
+            networkx_graph = to_networkx(batch_t[plot_steps])
             pos            = nx.spring_layout(networkx_graph)
-            nx.draw(networkx_graph, pos, with_labels=True, node_size=g_batch_t[plot_steps].x, font_size=10)
+            nx.draw(networkx_graph, pos, with_labels=True, node_size=batch_t[plot_steps].x, font_size=10)
             plt.show()
 
-        g_batch_t, _ = diffusion_step(g_batch_t, t, n_diffusing_steps, s)
-
-        #all_batches.append(g_batch_t)
+        batch_t, _ = diffusion_step(batch_t, t, n_diffusing_steps, s)
     
     # Check if intermediate steps are plotted; then, plot the NetworkX graph
     if plot_steps:
         # Convert PyTorch graph to NetworkX graph
-        networkx_graph = to_networkx(g_batch_t[plot_steps])
+        networkx_graph = to_networkx(batch_t[plot_steps])
         pos            = nx.spring_layout(networkx_graph)
-        nx.draw(networkx_graph, pos, with_labels=True, node_size=g_batch_t[plot_steps].x, font_size=10)
+        nx.draw(networkx_graph, pos, with_labels=True, node_size=batch_t[plot_steps].x, font_size=10)
         plt.show()
-    return g_batch_t, all_batches
+    return batch_t
 
 
 def diffusion_step(graph_0, t, n_diffusing_steps, s):
@@ -198,9 +190,6 @@ def denoise(batch_t, n_t_steps, node_model, edge_model, s=1e-2, sigma=None, plot
     for idx in range(batch_size_0):
         embedding_batch_0.append(batch_0[idx].y.detach().to(device))
 
-    # Initialize all batches list
-    all_batches = [batch_0]
-
     # Define t_steps as inverse of the diffuse process
     t_steps = np.arange(1, n_t_steps+1)[::-1]
     for t_step in t_steps:
@@ -245,9 +234,6 @@ def denoise(batch_t, n_t_steps, node_model, edge_model, s=1e-2, sigma=None, plot
 
         # Denoise batch altogether
         g_batch_0 = denoising_step(g_batch_0, pred_epsilon_t, t_step, n_t_steps, s=s, sigma=sigma)
-
-        # Append current batch
-        #all_batches.append(g_batch_0)
         
     # Check if intermediate steps are plotted; then, plot the NetworkX graph
     if plot_steps:
@@ -256,7 +242,7 @@ def denoise(batch_t, n_t_steps, node_model, edge_model, s=1e-2, sigma=None, plot
         pos            = nx.spring_layout(networkx_graph)
         nx.draw(networkx_graph, pos, with_labels=True, node_size=g_batch_0[plot_steps].x, font_size=10)
         plt.show()
-    return g_batch_0, all_batches
+    return g_batch_0
 
 
 def predict_noise(g_batch_t, node_model, edge_model):
@@ -518,3 +504,57 @@ def interpolate_graphs(dataset):
     #graph_0 = zeros_like(dataset[0])
     
     return dataset
+
+
+class EarlyStopping():
+    def __init__(self, patience=5, delta=0, wandb_run=None, model_name='model.pt'):
+        """Initializes the EarlyStopping object. Saves a model if accuracy is improved.
+        Declares early_stop = True if training does not improve in patience steps within a delta threshold.
+
+        Args:
+            patience   (int):          Number of steps with no improvement.
+            delta      (float):        Threshold for a score to be considered an improvement.
+            wandb_run  (wandb object): Optional WandB run object for logging.
+            model_name (str):          Name of the saved model checkpoint file.
+        """
+        self.patience = patience  # Number of steps with no improvement
+        self.delta = delta  # Threshold for a score to be an improvement
+        self.counter = 0
+        self.best_score = None
+        self.early_stop = False
+        self.val_loss_min = np.Inf
+        self.wandb_run = wandb_run
+        self.model_name = model_name
+
+    def __call__(self, val_loss, model):
+        """Call method to check and update early stopping.
+
+        Args:
+            val_loss (float):           Current validation loss.
+            model    (torch.nn.Module): The PyTorch model being trained.
+        """
+        if self.best_score is None:
+            self.best_score = val_loss
+            self.save_checkpoint(val_loss, model)
+        elif val_loss > self.best_score + self.delta:
+            self.counter += 1
+            if self.wandb_run:
+                self.wandb_run.log({'Early Stopping Counter': self.counter})
+
+            if self.counter >= self.patience:
+                self.early_stop = True
+        else:
+            self.best_score = val_loss
+            self.save_checkpoint(val_loss, model)
+            self.counter = 0
+
+    def save_checkpoint(self, val_loss, model):
+        """Save the model checkpoint if the validation loss has decreased.
+
+        Args:
+            val_loss (float):           Current validation loss.
+            model    (torch.nn.Module): The PyTorch model being trained.
+        """
+        if val_loss < self.val_loss_min:
+            torch.save(model.state_dict(), self.model_name)
+            self.val_loss_min = val_loss

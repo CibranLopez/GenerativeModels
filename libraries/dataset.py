@@ -111,3 +111,21 @@ def revert_standardize_dataset(dataset, dataset_parameters):
             data.x[:, feat_index] = data.x[:, feat_index] * dataset_parameters['feat_std'][feat_index] / dataset_parameters['scale'] + dataset_parameters['feat_mean'][feat_index]
 
     return dataset_rstd
+
+
+def get_datasets(labels, material_labels, dataset):
+    """Get datasets filtered by labels.
+
+    Args:
+        labels (list): List of labels to filter by.
+        material_labels (list): List of material labels.
+        dataset (list): List of data elements.
+
+    Returns:
+        list: Filtered dataset containing elements corresponding to the specified labels.
+    """
+    label_idxs = []
+    for label in labels:
+        idxs = [i for i, material_label in enumerate(material_labels) if material_label.split()[0] == label]
+        label_idxs.extend(idxs)
+    return [dataset[idx] for idx in label_idxs]
