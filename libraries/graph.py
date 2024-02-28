@@ -306,10 +306,9 @@ def get_voronoi_tessellation(atomic_masses, charges, electronegativities, ioniza
         new_ridge_points.append(new_atoms)
     
     # Delete those edges which only contain images
-    print(new_ridge_points)
     to_delete = []
     for k in range(len(new_ridge_points)):
-        pair = new_ridge_points[k, :2]
+        pair = new_ridge_points[k][:2]
         if (pair[0][0] == '-') and (pair[1][0] == '-'):
             to_delete.append(k)
     new_ridge_points = np.delete(new_ridge_points, to_delete, axis=0)
@@ -509,7 +508,7 @@ def graph_POSCAR_encoding(structure, encoding_type='voronoi', distance_threshold
     charges             = {}
     electronegativities = {}
     ionization_energies = {}
-    with open('../VASP/atomic_masses.dat', 'r') as atomic_masses_file:
+    with open('../MP/input/atomic_masses.dat', 'r') as atomic_masses_file:
         for line in atomic_masses_file:
             (key, mass, charge, electronegativity, ionization_energy) = line.split()
             atomic_masses[key]       = mass
