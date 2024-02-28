@@ -306,6 +306,7 @@ def get_voronoi_tessellation(atomic_masses, charges, electronegativities, ioniza
         new_ridge_points.append(new_atoms)
     
     # Delete those edges which only contain images
+    print(new_ridge_points)
     to_delete = []
     for k in range(len(new_ridge_points)):
         pair = new_ridge_points[k, :2]
