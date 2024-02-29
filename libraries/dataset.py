@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 
 # Checking if pytorch can run in GPU, else CPU
@@ -129,3 +130,19 @@ def get_datasets(labels, material_labels, dataset):
         idxs = [i for i, material_label in enumerate(material_labels) if material_label.split()[0] == label]
         label_idxs.extend(idxs)
     return [dataset[idx] for idx in label_idxs]
+
+
+def check_extend_POSCAR(structure, minimum_lattice_vector):
+    """Check that POSCAR cell is large enough, otherwise extend it in the direction.
+    A new POSCAR is saved, replacing previous one, which is copied to POSCAR_ini.
+
+    Args:
+        structure              (pymatgen Structure object): Structure from which the graph is to be generated.
+        minimum_lattice_vector (float):                     Minimum length of lattice vectors to be able to perform convolutions.
+    """
+
+    # Get necessary transformation for POSCAR to have valid lengths
+    replication_factor = np.ceil(minimum_lattice_vector / np.linalg.norm(structure.lattice.matrix, axis=1))
+
+    structure.make_supercell(replication_factor)
+    return structure
