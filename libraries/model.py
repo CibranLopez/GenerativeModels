@@ -162,12 +162,15 @@ def diffusion_step(graph_0, t, n_diffusing_steps, s):
     return graph_t, epsilon_t
 
 
-def denoise(batch_t, n_t_steps, node_model, edge_model, s=1e-2, sigma=None, plot_steps=False):
+def denoise(batch_t, n_t_steps, node_model, edge_model, n_graph_embbedings, s=1e-2, sigma=None, plot_steps=False):
     """Performs consecutive steps of diffusion in a reference batch of graphs.
 
     Args:
         batch_t    (torch_geometric.data.Data): Reference batch of graphs to be denoised (step t-1).
         n_t_steps  (int):                       Number of diffusive steps.
+        node_model (torch.nn.Module):           Model for graph-node prediction.
+        edge_model (torch.nn.Module):           Model for graph-edge prediction.
+        n_graph_embbedings (int):               Number of graph-level embeddings.
         s          (float):                     Parameter which controls the decay of alpha with t.
         sigma      (float):                     Parameter which controls the amount of noised added when generating.
         plot_steps (bool, int):                 Whether to plot each intermediate step, or which graph from batch.
@@ -230,7 +233,7 @@ def denoise(batch_t, n_t_steps, node_model, edge_model, s=1e-2, sigma=None, plot
             plt.show()
 
         # Remove node embeddings related to t_step and graph-level features
-        g_batch_0.x = g_batch_0.x[:, :-2]
+        g_batch_0.x = g_batch_0.x[:, :-1-n_graph_embbedings]  # HIGHLY HARDCODED
 
         # Denoise batch altogether
         g_batch_0 = denoising_step(g_batch_0, pred_epsilon_t, t_step, n_t_steps, s=s, sigma=sigma)
