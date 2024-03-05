@@ -1,9 +1,11 @@
 import numpy as np
 import torch
 import itertools
+import sys
 
 from pymatgen.core.structure import Structure
 from scipy.spatial           import Voronoi
+from rdkit                   import Chem
 
 # Checking if pytorch can run in GPU, else CPU
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -232,7 +234,7 @@ def get_all_linked_edges_and_attributes(nodes, positions):
     return edges, attributes
 
 
-def get_voronoi_tessellation(atomic_masses, charges, electronegativities, ionization_energies, temp_structure):
+def get_voronoi_tessellation(atomic_data, temp_structure):
     """
     Get the Voronoi nodes of a structure.
     Templated from the TopographyAnalyzer class, added to pymatgen.analysis.defects.utils by Yiming Chen, but now deleted.
@@ -240,10 +242,7 @@ def get_voronoi_tessellation(atomic_masses, charges, electronegativities, ioniza
     See commit 8b78474 'Generative models (basic example).ipynb'.
 
     Args:
-        atomic_masses
-        charges
-        electronegativities
-        ionization_energies
+        atomic_data    (dict):                      A dictionary with all node features.
         temp_structure (pymatgen Structure object): Structure from which the graph is to be generated
     """
     
@@ -345,23 +344,18 @@ def get_voronoi_tessellation(atomic_masses, charges, electronegativities, ioniza
 
         # Get node info
         # Loading the node (mass, charge, electronegativity and ionization energy)
-        node = [float(atomic_masses[species_name]),
-                float(charges[species_name]),
-                float(electronegativities[species_name]),
-                float(ionization_energies[species_name])
-                ]
-        nodes.append(node)
+        nodes.append([atomic_data[species_name]['atomic_masses'],
+                      atomic_data[species_name]['charges'],
+                      atomic_data[species_name]['electronegativities'],
+                      atomic_data[species_name]['ionization_energies']])
     return nodes, edges, attributes
 
 
-def get_sphere_images_tessellation(atomic_masses, charges, electronegativities, ionization_energies, structure, distance_threshold=6):
+def get_sphere_images_tessellation(atomic_data, structure, distance_threshold=6):
     """Gets the distances by pairs of particles, considering images with periodic boundary conditions (PBC).
 
     Args:
-        atomic_masses
-        charges
-        electronegativities
-        ionization_energies
+        atomic_data        (dict):                      A dictionary with all node features.
         structure          (pymatgen Structure object): Structure from which the graph is to be generated
         distance_threshold (float, optional):           The distance threshold for edge creation (default is 6).
 
@@ -396,11 +390,10 @@ def get_sphere_images_tessellation(atomic_masses, charges, electronegativities, 
         species_name = composition[particle_type]
 
         # Adding the nodes (mass, charge, electronegativity and ionization energies)
-        nodes.append([float(atomic_masses[species_name]),
-                      float(charges[species_name]),
-                      float(electronegativities[species_name]),
-                      float(ionization_energies[species_name])]
-                     )
+        nodes.append([atomic_data[species_name]['atomic_masses'],
+                      atomic_data[species_name]['charges'],
+                      atomic_data[species_name]['electronegativities'],
+                      atomic_data[species_name]['ionization_energies']])
 
         # Get the initial position
         position_0 = positions[index_0]
@@ -487,6 +480,47 @@ def get_sphere_images_tessellation(atomic_masses, charges, electronegativities, 
     return nodes, edges, attributes
 
 
+def get_molecule_tessellation(atomic_data, smiles):
+    """Extracts graph information from SMILES codification of a molecule.
+
+    Args:
+        atomic_data (dict): A dictionary with all node features.
+        smiles      (str): SMILES string codifying a molecule.
+
+    Returns:
+        nodes      (Tensor): A tensor containing node attributes.
+        edges      (Tensor): A tensor containing edge indices.
+        attributes (Tensor): A tensor containing edge attributes (distances).
+    """
+
+    # Generate the molecule from the SMILES string
+    mol = Chem.MolFromSmiles(smiles)
+
+    # Get adjacency matrix
+    adjacency_matrix = Chem.GetAdjacencyMatrix(mol, useBO=True)
+
+    # Get edge attributes (bond types)
+    attributes = []
+    for bond in mol.GetBonds():
+        bond_type = bond.GetBondTypeAsDouble()  # You can adjust this as needed
+        attributes.append(bond_type)
+
+    # Convert adjacency matrix to PyTorch tensor
+    adj_tensor = torch.tensor(adjacency_matrix)
+
+    # Get the edge indices from the adjacency matrix
+    edges = adj_tensor.nonzero(as_tuple=False).t().contiguous()
+
+    # Generate node features
+    nodes = []
+    for atom in mol.GetAtoms():
+        species_name = atom.GetSymbol()
+        nodes.append([atomic_data[species_name]['atomic_masses'],
+                      atomic_data[species_name]['charges'],
+                      atomic_data[species_name]['electronegativities'],
+                      atomic_data[species_name]['ionization_energies']])
+    return nodes, edges, attributes
+
 def graph_POSCAR_encoding(structure, encoding_type='voronoi', distance_threshold=6):
     """Generates a graph parameters from a POSCAR.
     There are two implementations:
@@ -504,55 +538,35 @@ def graph_POSCAR_encoding(structure, encoding_type='voronoi', distance_threshold
     """
 
     # Loading dictionary of atomic masses
-    atomic_masses       = {}
-    charges             = {}
-    electronegativities = {}
-    ionization_energies = {}
-    with open('../MP/input/atomic_masses.dat', 'r') as atomic_masses_file:
-        for line in atomic_masses_file:
-            (key, mass, charge, electronegativity, ionization_energy) = line.split()
-            atomic_masses[key]       = mass
-            charges[key]             = charge
-            electronegativities[key] = electronegativity
-            ionization_energies[key] = ionization_energy
+    atomic_data = {}
+    with open('../MP/input/atomic_masses.dat', 'r') as atomic_data_file:
+        for line in atomic_data_file:
+            key, atomic_mass, charge, electronegativity, ionization_energy = line.split()
+            atomic_data[key] = {
+                'atomic_mass':       float(atomic_mass),
+                'charge':            int(charge),
+                'electronegativity': float(electronegativity),
+                'ionization_energy': float(ionization_energy)
+            }
 
     if encoding_type == 'voronoi':
         # Get edges and attributes for the corresponding tessellation
-        nodes, edges, attributes = get_voronoi_tessellation(atomic_masses,
-                                                            charges,
-                                                            electronegativities,
-                                                            ionization_energies,
+        nodes, edges, attributes = get_voronoi_tessellation(atomic_data,
                                                             structure)
 
     elif encoding_type == 'sphere-images':
         # Get edges and attributes for the corresponding tessellation
-        nodes, edges, attributes = get_sphere_images_tessellation(atomic_masses,
-                                                                  charges,
-                                                                  electronegativities,
-                                                                  ionization_energies,
+        nodes, edges, attributes = get_sphere_images_tessellation(atomic_data,
                                                                   structure,
                                                                   distance_threshold=distance_threshold)
-        
-    elif encoding_type == 'box':
-        """
-        # Get particle types as a list with each species occupying a new positions, maintaining order
-        particle_types = []
-        for i in range(len(composition)):
-            particle_types += [i] * concentration[i]
-        
-        # Load all nodes and respective positions in the box
-        nodes, positions, species = get_atoms_in_unitcell(particle_types,
-                                                          composition,
-                                                          cell,
-                                                          atomic_masses,
-                                                          charges,
-                                                          electronegativities,
-                                                          ionization_energies,
-                                                          positions)
 
-        # Get edges and attributes for the corresponding nodes (all linked to each other)
-        edges, attributes = get_all_linked_edges_and_attributes(all_nodes, all_positions)
-        """
+    elif encoding_type == 'molecule':
+        # Get edges and attributes for the corresponding tessellation
+        nodes, edges, attributes = get_molecule_tessellation(atomic_data,
+                                                             structure)
+
+    else:
+        sys.exit('Error: encoding type not available.')
 
     # Convert to torch tensors and return
     nodes      = torch.tensor(nodes,      dtype=torch.float)
