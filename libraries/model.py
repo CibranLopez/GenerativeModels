@@ -437,34 +437,6 @@ def get_graph_losses(graph1, graph2, batch_size):
     return node_loss, edge_loss
 
 
-def get_target_loss(obtained_target, seeked_target):
-    """Calculate the target loss based on obtained and seeked targets.
-    It checks if seeked_target is a specific value or rather a limit
-
-    Args:
-        obtained_target (float):        The obtained target value.
-        seeked_target   (float or str): The desired target value or a string indicating the type of target.
-
-    Returns:
-        float: The calculated target loss.
-    """
-    
-    if np.isscalar(seeked_target):
-        # Target loss defined as the absolute difference between obtained and seeked targets
-        return np.abs(obtained_target - seeked_target)
-    
-    elif seeked_target == 'positive':
-        # Return a large negative value to indicate the target is positive
-        return seeked_target * (-1)
-    
-    elif seeked_target == 'negative':
-        # Return a positive value to indicate the target is negative
-        return seeked_target
-    
-    # If none of the above conditions are met, raise an error
-    sys.exit('Error: the seeked target is not valid')
-
-
 def add_features_to_graph(graph_0, node_features):
     """Include some more information to the node features. The generated graph does not modify the input graph.
 
