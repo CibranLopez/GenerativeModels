@@ -344,10 +344,10 @@ def get_voronoi_tessellation(atomic_data, temp_structure):
 
         # Get node info
         # Loading the node (mass, charge, electronegativity and ionization energy)
-        nodes.append([atomic_data[species_name]['atomic_masses'],
-                      atomic_data[species_name]['charges'],
-                      atomic_data[species_name]['electronegativities'],
-                      atomic_data[species_name]['ionization_energies']])
+        nodes.append([atomic_data[species_name]['atomic_mass'],
+                      atomic_data[species_name]['charge'],
+                      atomic_data[species_name]['electronegativity'],
+                      atomic_data[species_name]['ionization_energy']])
     return nodes, edges, attributes
 
 
@@ -390,10 +390,10 @@ def get_sphere_images_tessellation(atomic_data, structure, distance_threshold=6)
         species_name = composition[particle_type]
 
         # Adding the nodes (mass, charge, electronegativity and ionization energies)
-        nodes.append([atomic_data[species_name]['atomic_masses'],
-                      atomic_data[species_name]['charges'],
-                      atomic_data[species_name]['electronegativities'],
-                      atomic_data[species_name]['ionization_energies']])
+        nodes.append([atomic_data[species_name]['atomic_mass'],
+                      atomic_data[species_name]['charge'],
+                      atomic_data[species_name]['electronegativity'],
+                      atomic_data[species_name]['ionization_energy']])
 
         # Get the initial position
         position_0 = positions[index_0]
@@ -515,10 +515,10 @@ def get_molecule_tessellation(atomic_data, smiles):
     nodes = []
     for atom in mol.GetAtoms():
         species_name = atom.GetSymbol()
-        nodes.append([atomic_data[species_name]['atomic_masses'],
-                      atomic_data[species_name]['charges'],
-                      atomic_data[species_name]['electronegativities'],
-                      atomic_data[species_name]['ionization_energies']])
+        nodes.append([atomic_data[species_name]['atomic_mass'],
+                      atomic_data[species_name]['charge'],
+                      atomic_data[species_name]['electronegativity'],
+                      atomic_data[species_name]['ionization_energy']])
     return nodes, edges, attributes
 
 def graph_POSCAR_encoding(structure, encoding_type='voronoi', distance_threshold=6):
@@ -543,10 +543,10 @@ def graph_POSCAR_encoding(structure, encoding_type='voronoi', distance_threshold
         for line in atomic_data_file:
             key, atomic_mass, charge, electronegativity, ionization_energy = line.split()
             atomic_data[key] = {
-                'atomic_mass':       float(atomic_mass),
-                'charge':            int(charge),
-                'electronegativity': float(electronegativity),
-                'ionization_energy': float(ionization_energy)
+                'atomic_mass':       float(atomic_mass) if atomic_mass != 'None' else None,
+                'charge':            int(charge) if charge != 'None' else None,
+                'electronegativity': float(electronegativity) if electronegativity != 'None' else None,
+                'ionization_energy': float(ionization_energy) if ionization_energy != 'None' else None
             }
 
     if encoding_type == 'voronoi':

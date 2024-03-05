@@ -5,3 +5,4 @@ pymatgen
 matplotlib
 networkx
 scipy
+rdkit
