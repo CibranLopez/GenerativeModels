@@ -360,9 +360,9 @@ def get_sphere_images_tessellation(atomic_data, structure, distance_threshold=6)
         distance_threshold (float, optional):           The distance threshold for edge creation (default is 6).
 
     Returns:
-        nodes      (Tensor): A tensor containing node attributes.
-        edges      (Tensor): A tensor containing edge indices.
-        attributes (Tensor): A tensor containing edge attributes (distances).
+        nodes      (list): A tensor containing node attributes.
+        edges      (list): A tensor containing edge indices.
+        attributes (list): A tensor containing edge attributes (distances).
     """
 
     # Extract direct positions, composition and concentration as lists
@@ -488,28 +488,24 @@ def get_molecule_tessellation(atomic_data, smiles):
         smiles      (str): SMILES string codifying a molecule.
 
     Returns:
-        nodes      (Tensor): A tensor containing node attributes.
-        edges      (Tensor): A tensor containing edge indices.
-        attributes (Tensor): A tensor containing edge attributes (distances).
+        nodes      (list): A tensor containing node attributes.
+        edges      (list): A tensor containing edge indices.
+        attributes (list): A tensor containing edge attributes (distances).
     """
 
     # Generate the molecule from the SMILES string
     mol = Chem.MolFromSmiles(smiles)
 
-    # Get adjacency matrix
-    adjacency_matrix = Chem.GetAdjacencyMatrix(mol, useBO=True)
-
     # Get edge attributes (bond types)
+    edges      = []
     attributes = []
-    for bond in mol.GetBonds():
-        bond_type = bond.GetBondTypeAsDouble()  # You can adjust this as needed
-        attributes.append(bond_type)
-
-    # Convert adjacency matrix to PyTorch tensor
-    adj_tensor = torch.tensor(adjacency_matrix)
-
-    # Get the edge indices from the adjacency matrix
-    edges = adj_tensor.nonzero(as_tuple=False).t().contiguous()
+    for i in range(mol.GetNumAtoms()):
+        for j in range(i+1, mol.GetNumAtoms()):
+            bond = mol.GetBondBetweenAtoms(i, j)
+            if bond is not None:
+                bond_type = bond.GetBondTypeAsDouble()
+                edges.append([i, j])
+                attributes.append(bond_type)
 
     # Generate node features
     nodes = []
