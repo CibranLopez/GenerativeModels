@@ -9,3 +9,5 @@ Cibran: When introducing graph-level embeddings, explore convoluting node and gr
 Cibran: Training is being performed over noise prediction (although I think this is better than grah itself, it is worth checking it).
 
 Cibran: Check conditional generation approaches (ILVR has been discussed in the draft).
+
+Jacobo: Check schedule of weights in model backpropagations.
