@@ -234,7 +234,7 @@ def get_all_linked_edges_and_attributes(nodes, positions):
     return edges, attributes
 
 
-def get_voronoi_tessellation(atomic_data, temp_structure):
+def get_voronoi_tessellation(atomic_data, temp_structure, periodicity):
     """
     Get the Voronoi nodes of a structure.
     Templated from the TopographyAnalyzer class, added to pymatgen.analysis.defects.utils by Yiming Chen, but now deleted.
@@ -243,7 +243,8 @@ def get_voronoi_tessellation(atomic_data, temp_structure):
 
     Args:
         atomic_data    (dict):                      A dictionary with all node features.
-        temp_structure (pymatgen Structure object): Structure from which the graph is to be generated
+        temp_structure (pymatgen Structure object): Structure from which the graph is to be generated.
+        periodicity    (bool):                      Whether or not to consider periodicity of the structure.
     """
     
     # Map all sites to the unit cell; 0 ≤ xyz < 1
@@ -256,7 +257,8 @@ def get_voronoi_tessellation(atomic_data, temp_structure):
     # Get all atom coords in a supercell of the structure because
     # Voronoi polyhedra can extend beyond the standard unit cell
     coords = []
-    cell_range = list(range(-1, 2))
+    if periodicity: cell_range = list(range(-1, 2))  # Periodicity
+    else:           cell_range = [0]  # No periodicity
     for shift in itertools.product(cell_range, cell_range, cell_range):
         for site in prim_structure.sites:
             shifted = site.frac_coords + shift
@@ -517,16 +519,20 @@ def get_molecule_tessellation(atomic_data, smiles):
                       atomic_data[species_name]['ionization_energy']])
     return nodes, edges, attributes
 
-def graph_POSCAR_encoding(structure, encoding_type='voronoi', distance_threshold=6):
+
+def graph_POSCAR_encoding(structure, encoding_type='voronoi', distance_threshold=6, periodicity=True):
     """Generates a graph parameters from a POSCAR.
-    There are two implementations:
+    There are the following implementations:
         1. Voronoi tessellation.
         2. All particles inside a sphere of radius distance_threshold.
-        3. Fills the space given a cubic box of dimension [0-Lx, 0-Ly, 0-Lz] considering all necessary images. It links every particle with the rest for the given set of nodes and edges.
+        3. Filled space given a cubic box of dimension [0-Lx, 0-Ly, 0-Lz] considering all necessary images.
+           It links every particle with the rest for the given set of nodes and edges.
 
     Args:
-        structure (pymatgen Structure object): Structure from which the graph is to be generated.
-        encoding_type (str): Framework used for encoding the structure.
+        structure          (pymatgen Structure object): Structure from which the graph is to be generated.
+        encoding_type      (str):    Framework used for encoding the structure.
+        distance_threshold (float):  Distance threshold for sphere-images tessellation.
+        periodicity        (bool):   Whether or not to consider periodicity of the structure.
     Returns:
         nodes      (torch tensor): Generated nodes with corresponding features.
         edges      (torch tensor): Generated connections between nodes.
@@ -548,7 +554,8 @@ def graph_POSCAR_encoding(structure, encoding_type='voronoi', distance_threshold
     if encoding_type == 'voronoi':
         # Get edges and attributes for the corresponding tessellation
         nodes, edges, attributes = get_voronoi_tessellation(atomic_data,
-                                                            structure)
+                                                            structure,
+                                                            periodicity)
 
     elif encoding_type == 'sphere-images':
         # Get edges and attributes for the corresponding tessellation

@@ -72,13 +72,14 @@ def standardize_dataset(dataset, transformation=None):
 
     # Create and save as a dictionary
     dataset_parameters = {
-        'target_mean': target_mean,
-        'feat_mean':   feat_mean,
-        'edge_mean':   edge_mean,
-        'target_std':  target_std,
-        'edge_std':    edge_std,
-        'feat_std':    feat_std,
-        'scale':       scale
+        'transformation': transformation,
+        'target_mean':    target_mean,
+        'feat_mean':      feat_mean,
+        'edge_mean':      edge_mean,
+        'target_std':     target_std,
+        'edge_std':       edge_std,
+        'feat_std':       feat_std,
+        'scale':          scale
     }
     return dataset_std, dataset_parameters
 
