@@ -417,8 +417,8 @@ def get_graph_losses(graph1, graph2, batch_size):
         batch_size (int):                       Size of the data batch, used to compute the MSE loss.
 
     Returns:
-        node_loss (torch.Tensor): Loss value for node features between the two graphs.
-        edge_loss (torch.Tensor): Loss value for edge attributes between the two graphs.
+        node_losses (list with torch.Tensor inside): Loss value for node features between the two graphs.
+        edge_loss   (torch.Tensor):                         Loss value for edge attributes between the two graphs.
     """
 
     # Initialize loss criteria for nodes and edges
@@ -426,18 +426,21 @@ def get_graph_losses(graph1, graph2, batch_size):
     edge_criterion = nn.MSELoss()
 
     # Calculate the loss for node features by comparing the node attribute tensors
-    node_loss = node_criterion(graph1.x,
-                               graph2.x)
+    node_losses_batch = []
+    for i in range(graph1.x.size(1)):
+        node_loss = node_criterion(graph1.x[:, i],
+                                   graph2.x[:, i])
+        node_losses_batch.append(node_loss)
 
     # Calculate the loss for edge attributes by comparing the edge attribute tensors
     edge_loss = edge_criterion(graph1.edge_attr,
                                graph2.edge_attr)
 
     # Divide by the number of data graphs in the batch
-    node_loss /= batch_size
-    edge_loss /= batch_size
+    node_losses = [node_loss / batch_size for node_loss in node_losses_batch]
+    edge_loss  /= batch_size
 
-    return node_loss, edge_loss
+    return node_losses, edge_loss
 
 
 def add_features_to_graph(graph_0, node_features):
