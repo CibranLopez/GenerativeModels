@@ -11,3 +11,5 @@ Cibran: Check conditional generation approaches (ILVR has been discussed in the 
 Jacobo: Check schedule of weights in model backpropagations.
 
 Cibran: Losses on nodes are being averaged, although it is interesting to save them separately.
+
+Cibran: We first add t-step information allowing transfer learning from unconditional to conditional learning.

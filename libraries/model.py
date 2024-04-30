@@ -207,13 +207,13 @@ def denoise(batch_t, n_t_steps, node_model, edge_model, n_graph_embbedings, s=1e
         for idx in range(batch_size_0):
             g_batch_0.append(batch_0[idx].clone())
 
-            # Add graph-level embedding to graph_t as node embeddings
-            g_batch_0[idx] = add_features_to_graph(g_batch_0[idx],
-                                                   embedding_batch_0[idx])  # To match graph.y shape
-
             # Add t_step information to graph_t as node embeddings
             g_batch_0[idx] = add_features_to_graph(g_batch_0[idx],
                                                    t_step_std)  # To match graph.y shape, which is 1D
+
+            # Add graph-level embedding to graph_t as node embeddings
+            g_batch_0[idx] = add_features_to_graph(g_batch_0[idx],
+                                                   embedding_batch_0[idx])  # To match graph.y shape
 
         # Generate batch objects
         g_batch_0 = Batch.from_data_list(g_batch_0)
