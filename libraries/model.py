@@ -281,20 +281,20 @@ def predict_noise(g_batch_t, node_model, edge_model):
     out_attr = out_attr.to(device).ravel()
 
     # Construct noise graph with predicted node features and edge attributes, and previous edge indexes
-    idx_x_i = 0
+    idx_x_i    = 0
     idx_attr_i = 0
     pred_e_batch_t = []
     for idx in range(len(g_batch_t)):
-        idx_x_f    = idx_x_i    + g_batch_t[idx].num_nodes
-        idx_attr_f = idx_attr_i + g_batch_t[idx].num_edges
+        idx_x_j    = idx_x_i    + g_batch_t[idx].num_nodes
+        idx_attr_j = idx_attr_i + g_batch_t[idx].num_edges
 
-        temp_pred = Data(x=out_x[idx_x_i:idx_x_f],
+        temp_pred = Data(x=out_x[idx_x_i:idx_x_j],
                          edge_index=g_batch_t[idx].edge_index,
-                         edge_attr=out_attr[idx_attr_i:idx_attr_f])
+                         edge_attr=out_attr[idx_attr_i:idx_attr_j])
 
         # Update indexes
-        idx_x_i = idx_x_f
-        idx_attr_i = idx_attr_f
+        idx_x_i    = idx_x_j
+        idx_attr_i = idx_attr_j
 
         # Append data
         pred_e_batch_t.append(temp_pred)
