@@ -248,7 +248,7 @@ def denoise(batch_t, n_t_steps, node_model, edge_model, n_graph_embbedings, s=1e
     return g_batch_0
 
 
-def predict_noise(g_batch_t, node_model, edge_model):
+def predict_noise(graph, node_model, edge_model):
     """Predicts noise given some batch of noisy graphs using specified nmodels
 
     Args:
@@ -261,50 +261,33 @@ def predict_noise(g_batch_t, node_model, edge_model):
     """
 
     # Perform a single forward pass for predicting node features
-    out_x = node_model(g_batch_t.x,
-                       g_batch_t.edge_index,
-                       g_batch_t.edge_attr)
+    out_x = node_model(graph.x,
+                       graph.edge_index,
+                       graph.edge_attr)
 
     # Remove t_step information
     out_x = out_x[:, :-1]
 
     # Define x_i and x_j as features of every corresponding pair of nodes (same order than attributes)
-    x_i = g_batch_t.x[g_batch_t.edge_index[0]]
-    x_j = g_batch_t.x[g_batch_t.edge_index[1]]
+    x_i = graph.x[graph.edge_index[0]]
+    x_j = graph.x[graph.edge_index[1]]
 
     # Perform a single forward pass for predicting edge attributes
     # Introduce previous edge attributes as features as well
-    out_attr = edge_model(x_i, x_j, g_batch_t.edge_attr)
+    out_attr = edge_model(x_i, x_j, graph.edge_attr)
 
     # Moving data to device
     out_x    = out_x.to(device)
     out_attr = out_attr.to(device).ravel()
 
-    # Construct noise graph with predicted node features and edge attributes, and previous edge indexes
-    idx_x_i = 0
-    idx_attr_i = 0
-    pred_e_batch_t = []
-    for idx in range(len(g_batch_t)):
-        idx_x_f    = idx_x_i    + g_batch_t[idx].num_nodes
-        idx_attr_f = idx_attr_i + g_batch_t[idx].num_edges
-
-        temp_pred = Data(x=out_x[idx_x_i:idx_x_f],
-                         edge_index=g_batch_t[idx].edge_index,
-                         edge_attr=out_attr[idx_attr_i:idx_attr_f])
-
-        # Update indexes
-        idx_x_i = idx_x_f
-        idx_attr_i = idx_attr_f
-
-        # Append data
-        pred_e_batch_t.append(temp_pred)
-
     # Generate batch objects
-    pred_e_batch_t = Batch.from_data_list(pred_e_batch_t)
+    pred_e = Data(x=out_x,
+                  edge_index=graph.edge_index,
+                  edge_attr=out_attr)
 
     # Move data to device
-    pred_e_batch_t = pred_e_batch_t.to(device)
-    return pred_e_batch_t
+    pred_e = pred_e.to(device)
+    return pred_e
 
 
 def denoising_step(graph_t, epsilon, t, n_t_steps, s, sigma):
