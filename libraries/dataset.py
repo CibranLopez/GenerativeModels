@@ -145,5 +145,6 @@ def check_extend_POSCAR(structure, minimum_lattice_vector):
     # Get necessary transformation for POSCAR to have valid lengths
     replication_factor = np.ceil(minimum_lattice_vector / np.linalg.norm(structure.lattice.matrix, axis=1))
 
-    structure.make_supercell(replication_factor)
+    if np.all(replication_factor > 0):
+        structure.make_supercell(replication_factor)
     return structure
