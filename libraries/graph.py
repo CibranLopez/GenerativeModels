@@ -541,7 +541,7 @@ def graph_POSCAR_encoding(structure, encoding_type='voronoi', distance_threshold
 
     # Loading dictionary of atomic masses
     atomic_data = {}
-    with open('../MP/input/atomic_masses.dat', 'r') as atomic_data_file:
+    with open('/home/claudio/cibran/Work/UPC/MP/input/atomic_masses.dat', 'r') as atomic_data_file:
         for line in atomic_data_file:
             key, atomic_mass, charge, electronegativity, ionization_energy = line.split()
             atomic_data[key] = {
