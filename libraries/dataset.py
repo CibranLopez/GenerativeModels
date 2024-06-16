@@ -26,7 +26,12 @@ def standardize_dataset(dataset, transformation=None):
 
     # Number of graphs
     n_graphs   = len(dataset_std)
+    
+    # Number of features per node
     n_features = dataset_std[0].num_node_features
+    
+    # Number of features per graph
+    n_y = dataset_std[0].y.shape[0]
     
     # Check if non-linear standardization
     if transformation == 'inverse-quadratic':
@@ -34,12 +39,18 @@ def standardize_dataset(dataset, transformation=None):
             data.edge_attr = 1 / data.edge_attr.pow(2)
 
     # Compute means
-    target_mean = sum([data.y.mean()         for data in dataset_std]) / n_graphs
-    edge_mean   = sum([data.edge_attr.mean() for data in dataset_std]) / n_graphs
+    target_mean = torch.zeros(n_y)
+    for target_index in range(n_y):
+        target_mean[target_index] = sum([data.y[target_index] for data in dataset_std]) / n_graphs
+    
+    edge_mean = sum([data.edge_attr.mean() for data in dataset_std]) / n_graphs
     
     # Compute standard deviations
-    target_std = torch.sqrt(sum([(data.y         - target_mean).pow(2).sum() for data in dataset_std]) / (n_graphs * (n_graphs - 1)))
-    edge_std   = torch.sqrt(sum([(data.edge_attr -   edge_mean).pow(2).sum() for data in dataset_std]) / (n_graphs * (n_graphs - 1)))
+    target_std = torch.zeros(n_y)
+    for target_index in range(n_y):
+        target_std[target_index] = torch.sqrt(sum([(data.y[target_index] - target_mean[target_index]).pow(2).sum() for data in dataset_std]) / (n_graphs * (n_graphs - 1)))
+    
+    edge_std = torch.sqrt(sum([(data.edge_attr - edge_mean).pow(2).sum() for data in dataset_std]) / (n_graphs * (n_graphs - 1)))
     
     # In case we want to increase the values of the normalization
     scale = torch.tensor(1e0)
@@ -145,5 +156,6 @@ def check_extend_POSCAR(structure, minimum_lattice_vector):
     # Get necessary transformation for POSCAR to have valid lengths
     replication_factor = np.ceil(minimum_lattice_vector / np.linalg.norm(structure.lattice.matrix, axis=1))
 
-    structure.make_supercell(replication_factor)
+    if np.all(replication_factor > 0):
+        structure.make_supercell(replication_factor)
     return structure

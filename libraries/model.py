@@ -111,9 +111,9 @@ def diffuse(batch_0, n_diffusing_steps, s=1e-2, plot_steps=False):
         # Check if intermediate steps are plotted; then, plot the NetworkX graph
         if plot_steps:
             # Convert PyTorch graph to NetworkX graph
-            networkx_graph = to_networkx(batch_t[plot_steps])
+            networkx_graph = to_networkx(batch_t)
             pos            = nx.spring_layout(networkx_graph)
-            nx.draw(networkx_graph, pos, with_labels=True, node_size=batch_t[plot_steps].x, font_size=10)
+            nx.draw(networkx_graph, pos, with_labels=True, node_size=batch_t.x, font_size=10)
             plt.show()
 
         batch_t, _ = diffusion_step(batch_t, t, n_diffusing_steps, s)
@@ -121,9 +121,9 @@ def diffuse(batch_0, n_diffusing_steps, s=1e-2, plot_steps=False):
     # Check if intermediate steps are plotted; then, plot the NetworkX graph
     if plot_steps:
         # Convert PyTorch graph to NetworkX graph
-        networkx_graph = to_networkx(batch_t[plot_steps])
+        networkx_graph = to_networkx(batch_t)
         pos            = nx.spring_layout(networkx_graph)
-        nx.draw(networkx_graph, pos, with_labels=True, node_size=batch_t[plot_steps].x, font_size=10)
+        nx.draw(networkx_graph, pos, with_labels=True, node_size=batch_t.x, font_size=10)
         plt.show()
     return batch_t
 
