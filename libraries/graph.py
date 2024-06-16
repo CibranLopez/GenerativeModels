@@ -690,7 +690,7 @@ def composition_concentration_from_keys(keys, positions):
 def POSCAR_graph_encoding(graph, lattice_vectors, file_name='POSCAR', POSCAR_name=None, POSCAR_directory='./'):
     """Encode a graph into a POSCAR (VASP input) file format.
 
-    Args:
+    Args:ººº
         graph            (torch_geometric.data.Data): The input graph structure with continuous node embeddings.
         lattice_vectors  (numpy arrray):              Lattice vectors.
         file_name        (str, optional):             Name for the POSCAR file. Defaults to POSCAR.

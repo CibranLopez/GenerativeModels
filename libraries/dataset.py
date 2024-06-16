@@ -32,7 +32,7 @@ def standardize_dataset(dataset, transformation=None):
     if transformation == 'inverse-quadratic':
         for data in dataset_std:
             data.edge_attr = 1 / data.edge_attr.pow(2)
-    
+
     # Compute means
     target_mean = sum([data.y.mean()         for data in dataset_std]) / n_graphs
     edge_mean   = sum([data.edge_attr.mean() for data in dataset_std]) / n_graphs
