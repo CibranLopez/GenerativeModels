@@ -111,9 +111,9 @@ def diffuse(batch_0, n_diffusing_steps, s=1e-2, plot_steps=False):
         # Check if intermediate steps are plotted; then, plot the NetworkX graph
         if plot_steps:
             # Convert PyTorch graph to NetworkX graph
-            networkx_graph = to_networkx(batch_t)
+            networkx_graph = to_networkx(batch_t[plot_steps])
             pos            = nx.spring_layout(networkx_graph)
-            nx.draw(networkx_graph, pos, with_labels=True, node_size=batch_t.x, font_size=10)
+            nx.draw(networkx_graph, pos, with_labels=True, node_size=batch_t[plot_steps].x, font_size=10)
             plt.show()
 
         batch_t, _ = diffusion_step(batch_t, t, n_diffusing_steps, s)
@@ -121,9 +121,9 @@ def diffuse(batch_0, n_diffusing_steps, s=1e-2, plot_steps=False):
     # Check if intermediate steps are plotted; then, plot the NetworkX graph
     if plot_steps:
         # Convert PyTorch graph to NetworkX graph
-        networkx_graph = to_networkx(batch_t)
+        networkx_graph = to_networkx(batch_t[plot_steps])
         pos            = nx.spring_layout(networkx_graph)
-        nx.draw(networkx_graph, pos, with_labels=True, node_size=batch_t.x, font_size=10)
+        nx.draw(networkx_graph, pos, with_labels=True, node_size=batch_t[plot_steps].x, font_size=10)
         plt.show()
     return batch_t
 
@@ -355,9 +355,8 @@ class nGCNN(torch.nn.Module):
 
         # Define graph convolution layers
         self.conv1 = GraphConv(n_node_features+n_graph_features, 64)  # Introducing node features
-        self.conv2 = GraphConv(64, 128)  # Predicting node features
-        self.conv3 = GraphConv(128, 32)  # Predicting node features
-        self.conv4 = GraphConv(32, n_node_features)  # Predicting node features
+        self.conv2 = GraphConv(64, 32)  # Predicting node features
+        self.conv3 = GraphConv(32, n_node_features)  # Predicting node features
 
         self.pdropout = pdropout
 
@@ -368,8 +367,6 @@ class nGCNN(torch.nn.Module):
         x = self.conv2(x, edge_index, edge_attr)
         x = x.relu()
         x = self.conv3(x, edge_index, edge_attr)
-        x = x.relu()
-        x = self.conv4(x, edge_index, edge_attr)
         return x
 
 
@@ -386,8 +383,8 @@ class eGCNN(nn.Module):
         # Set random seed for reproducibility
         torch.manual_seed(12345)
 
-        self.linear1 = Linear(n_node_features+n_graph_features+1, 64)  # Introducing node features + previous edge attribute
-        self.linear2 = Linear(64, 32)  # Introducing node features + previous edge attribute
+        self.linear1 = Linear(n_node_features+n_graph_features+1, 32)  # Introducing node features + previous edge attribute
+        self.linear2 = Linear(32, 32)  # Introducing node features + previous edge attribute
         self.linear3 = Linear(32, 1)  # Predicting one single weight
 
         self.pdropout = pdropout
