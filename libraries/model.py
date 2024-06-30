@@ -266,9 +266,6 @@ def predict_noise(g_batch_t, node_model, edge_model):
                        g_batch_t.edge_index,
                        g_batch_t.edge_attr)
 
-    # Remove t_step information
-    out_x = out_x[:, :-1]
-
     # Define x_i and x_j as features of every corresponding pair of nodes (same order than attributes)
     x_i = g_batch_t.x[g_batch_t.edge_index[0]]
     x_j = g_batch_t.x[g_batch_t.edge_index[1]]
@@ -354,10 +351,10 @@ class nGCNN(torch.nn.Module):
         torch.manual_seed(12345)
 
         # Define graph convolution layers
-        self.conv1 = GraphConv(n_node_features+n_graph_features, 64)  # Introducing node features
-        self.conv2 = GraphConv(64, 128)  # Predicting node features
-        self.conv3 = GraphConv(128, 32)  # Predicting node features
-        self.conv4 = GraphConv(32, n_node_features)  # Predicting node features
+        self.conv1 = GraphConv(n_node_features+n_graph_features, 128)  # Introducing node features
+        self.conv2 = GraphConv(128, 256)  # Predicting node features
+        self.conv3 = GraphConv(256, 64)  # Predicting node features
+        self.conv4 = GraphConv(64, n_node_features)  # Predicting node features
 
         self.pdropout = pdropout
 
@@ -386,9 +383,10 @@ class eGCNN(nn.Module):
         # Set random seed for reproducibility
         torch.manual_seed(12345)
 
-        self.linear1 = Linear(n_node_features+n_graph_features+1, 64)  # Introducing node features + previous edge attribute
-        self.linear2 = Linear(64, 32)  # Introducing node features + previous edge attribute
-        self.linear3 = Linear(32, 1)  # Predicting one single weight
+        self.linear1 = Linear(n_node_features+n_graph_features+1, 128)  # Introducing node features + previous edge attribute
+        self.linear2 = Linear(128, 256)  # Introducing node features + previous edge attribute
+        self.linear3 = Linear(256, 64)  # Introducing node features + previous edge attribute
+        self.linear4 = Linear(64, 1)  # Predicting one single weight
 
         self.pdropout = pdropout
 
@@ -412,6 +410,8 @@ class eGCNN(nn.Module):
         x = self.linear2(x)
         x = x.relu()
         x = self.linear3(x)
+        x = x.relu()
+        x = self.linear4(x)
         return x
 
 
