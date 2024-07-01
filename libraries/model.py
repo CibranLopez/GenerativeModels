@@ -361,7 +361,6 @@ class nGCNN(torch.nn.Module):
         x = self.conv1(x, edge_index, edge_attr)
         x = x.relu()
         x = self.conv2(x, edge_index, edge_attr)
-        x = x.relu()
         return x
 
 
