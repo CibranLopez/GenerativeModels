@@ -309,12 +309,12 @@ def denoising_step(graph_t, epsilon, t, n_t_steps, s, sigma):
     """Performs a forward step of a denoising chain.
 
     Args:
-        graph_t  (torch_geometric.data.Data): Graph which is to be denoised (step t).
-        epsilon  (torch_geometric.data.Data): Predicted noise to subtract.
-        t        (int):                       Step of the diffusion process.
-        n_t_steps (int):                      Number of diffusive steps.
-        s        (float):                     Parameter which controls the decay of alpha with t.
-        sigma    (float):                     Parameter which controls the amount of noised added when generating.
+        graph_t   (torch_geometric.data.Data): Graph which is to be denoised (step t).
+        epsilon   (torch_geometric.data.Data): Predicted noise to subtract.
+        t         (int):                       Step of the diffusion process.
+        n_t_steps (int):                       Number of diffusive steps.
+        s         (float):                     Parameter which controls the decay of alpha with t.
+        sigma     (float):                     Parameter which controls the amount of noised added when generating.
 
     Returns:
         graph_0 (torch_geometric.data.Data): Denoised graph (step t-1).
@@ -406,7 +406,7 @@ class eGCNN(nn.Module):
         return x
 
 
-def get_graph_losses(graph1, graph2, batch_size):
+def get_graph_losses(graph1, graph2):
     """Calculate loss values for node features and edge attributes between two graphs.
     Depending on the size of the graphs, calculating MSE loss directly might be memory-intensive.
     Processing that in batches or subsets of nodes/edges can be more appropriate.
