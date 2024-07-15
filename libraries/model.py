@@ -111,9 +111,9 @@ def diffuse(batch_0, n_diffusing_steps, s=1e-2, plot_steps=False):
         # Check if intermediate steps are plotted; then, plot the NetworkX graph
         if plot_steps:
             # Convert PyTorch graph to NetworkX graph
-            networkx_graph = to_networkx(batch_t[plot_steps])
+            networkx_graph = to_networkx(batch_t)
             pos            = nx.spring_layout(networkx_graph)
-            nx.draw(networkx_graph, pos, with_labels=True, node_size=batch_t[plot_steps].x, font_size=10)
+            nx.draw(networkx_graph, pos, with_labels=True, node_size=batch_t.x, font_size=10)
             plt.show()
 
         batch_t, _ = diffusion_step(batch_t, t, n_diffusing_steps, s)
@@ -121,9 +121,9 @@ def diffuse(batch_0, n_diffusing_steps, s=1e-2, plot_steps=False):
     # Check if intermediate steps are plotted; then, plot the NetworkX graph
     if plot_steps:
         # Convert PyTorch graph to NetworkX graph
-        networkx_graph = to_networkx(batch_t[plot_steps])
+        networkx_graph = to_networkx(batch_t)
         pos            = nx.spring_layout(networkx_graph)
-        nx.draw(networkx_graph, pos, with_labels=True, node_size=batch_t[plot_steps].x, font_size=10)
+        nx.draw(networkx_graph, pos, with_labels=True, node_size=batch_t.x, font_size=10)
         plt.show()
     return batch_t
 
@@ -266,9 +266,6 @@ def predict_noise(g_batch_t, node_model, edge_model):
                        g_batch_t.edge_index,
                        g_batch_t.edge_attr)
 
-    # Remove t_step information
-    out_x = out_x[:, :-1]
-
     # Define x_i and x_j as features of every corresponding pair of nodes (same order than attributes)
     x_i = g_batch_t.x[g_batch_t.edge_index[0]]
     x_j = g_batch_t.x[g_batch_t.edge_index[1]]
@@ -312,12 +309,12 @@ def denoising_step(graph_t, epsilon, t, n_t_steps, s, sigma):
     """Performs a forward step of a denoising chain.
 
     Args:
-        graph_t  (torch_geometric.data.Data): Graph which is to be denoised (step t).
-        epsilon  (torch_geometric.data.Data): Predicted noise to subtract.
-        t        (int):                       Step of the diffusion process.
-        n_t_steps (int):                      Number of diffusive steps.
-        s        (float):                     Parameter which controls the decay of alpha with t.
-        sigma    (float):                     Parameter which controls the amount of noised added when generating.
+        graph_t   (torch_geometric.data.Data): Graph which is to be denoised (step t).
+        epsilon   (torch_geometric.data.Data): Predicted noise to subtract.
+        t         (int):                       Step of the diffusion process.
+        n_t_steps (int):                       Number of diffusive steps.
+        s         (float):                     Parameter which controls the decay of alpha with t.
+        sigma     (float):                     Parameter which controls the amount of noised added when generating.
 
     Returns:
         graph_0 (torch_geometric.data.Data): Denoised graph (step t-1).
@@ -354,9 +351,9 @@ class nGCNN(torch.nn.Module):
         torch.manual_seed(12345)
 
         # Define graph convolution layers
-        self.conv1 = GraphConv(n_node_features+n_graph_features, 64)  # Introducing node features
-        self.conv2 = GraphConv(64, 32)  # Predicting node features
-        self.conv3 = GraphConv(32, n_node_features)  # Predicting node features
+        self.conv1 = GraphConv(n_node_features+n_graph_features, 128)  # Introducing node features
+        self.conv2 = GraphConv(128, 64)  # Predicting node features
+        self.conv3 = GraphConv(64, n_node_features)  # Predicting node features
 
         self.pdropout = pdropout
 
@@ -383,9 +380,9 @@ class eGCNN(nn.Module):
         # Set random seed for reproducibility
         torch.manual_seed(12345)
 
-        self.linear1 = Linear(n_node_features+n_graph_features+1, 32)  # Introducing node features + previous edge attribute
-        self.linear2 = Linear(32, 32)  # Introducing node features + previous edge attribute
-        self.linear3 = Linear(32, 1)  # Predicting one single weight
+        self.linear1 = Linear(n_node_features+n_graph_features+1, 128)  # Introducing node features + previous edge attribute
+        self.linear2 = Linear(128, 64)  # Introducing node features + previous edge attribute
+        self.linear3 = Linear(64, 1)  # Predicting one single weight
 
         self.pdropout = pdropout
 
@@ -412,7 +409,7 @@ class eGCNN(nn.Module):
         return x
 
 
-def get_graph_losses(graph1, graph2, batch_size):
+def get_graph_losses(graph1, graph2):
     """Calculate loss values for node features and edge attributes between two graphs.
     Depending on the size of the graphs, calculating MSE loss directly might be memory-intensive.
     Processing that in batches or subsets of nodes/edges can be more appropriate.
