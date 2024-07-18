@@ -352,8 +352,9 @@ class nGCNN(torch.nn.Module):
 
         # Define graph convolution layers
         self.conv1 = GraphConv(n_node_features+n_graph_features, 128)  # Introducing node features
-        self.conv2 = GraphConv(128, 64)  # Predicting node features
-        self.conv3 = GraphConv(64, n_node_features)  # Predicting node features
+        self.conv2 = GraphConv(128, 256)  # Predicting node features
+        self.conv3 = GraphConv(256, 64)  # Predicting node features
+        self.conv4 = GraphConv(64, n_node_features)  # Predicting node features
 
         self.pdropout = pdropout
 
@@ -364,6 +365,8 @@ class nGCNN(torch.nn.Module):
         x = self.conv2(x, edge_index, edge_attr)
         x = x.relu()
         x = self.conv3(x, edge_index, edge_attr)
+        x = x.relu()
+        x = self.conv4(x, edge_index, edge_attr)
         return x
 
 
@@ -381,8 +384,9 @@ class eGCNN(nn.Module):
         torch.manual_seed(12345)
 
         self.linear1 = Linear(n_node_features+n_graph_features+1, 128)  # Introducing node features + previous edge attribute
-        self.linear2 = Linear(128, 64)  # Introducing node features + previous edge attribute
-        self.linear3 = Linear(64, 1)  # Predicting one single weight
+        self.linear2 = Linear(128, 256)  # Introducing node features + previous edge attribute
+        self.linear3 = Linear(256, 64)  # Introducing node features + previous edge attribute
+        self.linear4 = Linear(64, 1)  # Predicting one single weight
 
         self.pdropout = pdropout
 
@@ -406,6 +410,8 @@ class eGCNN(nn.Module):
         x = self.linear2(x)
         x = x.relu()
         x = self.linear3(x)
+        x = x.relu()
+        x = self.linear4(x)
         return x
 
 
