@@ -351,8 +351,8 @@ class nGCNN(torch.nn.Module):
         torch.manual_seed(12345)
 
         # Define graph convolution layers
-        self.conv1 = GraphConv(n_node_features+n_graph_features, 32)  # Introducing node features
-        self.conv2 = GraphConv(32, n_node_features)  # Predicting node features
+        self.conv1 = GraphConv(n_node_features+n_graph_features, 64)  # Introducing node features
+        self.conv2 = GraphConv(64, n_node_features)  # Predicting node features
 
         self.pdropout = pdropout
 
@@ -377,9 +377,9 @@ class eGCNN(nn.Module):
         # Set random seed for reproducibility
         torch.manual_seed(12345)
 
-        self.linear1 = Linear(n_node_features+n_graph_features+1, 32)  # Introducing node features + previous edge attribute
-        self.linear2 = Linear(32, 16)  # Introducing node features + previous edge attribute
-        self.linear3 = Linear(16, 1)  # Predicting one single weight
+        self.linear1 = Linear(n_node_features+n_graph_features+1, 64)  # Introducing node features + previous edge attribute
+        self.linear2 = Linear(64, 32)  # Introducing node features + previous edge attribute
+        self.linear3 = Linear(32, 1)  # Predicting one single weight
 
         self.pdropout = pdropout
 
