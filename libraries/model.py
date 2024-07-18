@@ -309,12 +309,12 @@ def denoising_step(graph_t, epsilon, t, n_t_steps, s, sigma):
     """Performs a forward step of a denoising chain.
 
     Args:
-        graph_t  (torch_geometric.data.Data): Graph which is to be denoised (step t).
-        epsilon  (torch_geometric.data.Data): Predicted noise to subtract.
-        t        (int):                       Step of the diffusion process.
-        n_t_steps (int):                      Number of diffusive steps.
-        s        (float):                     Parameter which controls the decay of alpha with t.
-        sigma    (float):                     Parameter which controls the amount of noised added when generating.
+        graph_t   (torch_geometric.data.Data): Graph which is to be denoised (step t).
+        epsilon   (torch_geometric.data.Data): Predicted noise to subtract.
+        t         (int):                       Step of the diffusion process.
+        n_t_steps (int):                       Number of diffusive steps.
+        s         (float):                     Parameter which controls the decay of alpha with t.
+        sigma     (float):                     Parameter which controls the amount of noised added when generating.
 
     Returns:
         graph_0 (torch_geometric.data.Data): Denoised graph (step t-1).
@@ -351,8 +351,10 @@ class nGCNN(torch.nn.Module):
         torch.manual_seed(12345)
 
         # Define graph convolution layers
-        self.conv1 = GraphConv(n_node_features+n_graph_features, 64)  # Introducing node features
-        self.conv2 = GraphConv(64, n_node_features)  # Predicting node features
+        self.conv1 = GraphConv(n_node_features+n_graph_features, 128)  # Introducing node features
+        self.conv2 = GraphConv(128, 256)  # Predicting node features
+        self.conv3 = GraphConv(256, 64)  # Predicting node features
+        self.conv4 = GraphConv(64, n_node_features)  # Predicting node features
 
         self.pdropout = pdropout
 
@@ -361,6 +363,10 @@ class nGCNN(torch.nn.Module):
         x = self.conv1(x, edge_index, edge_attr)
         x = x.relu()
         x = self.conv2(x, edge_index, edge_attr)
+        x = x.relu()
+        x = self.conv3(x, edge_index, edge_attr)
+        x = x.relu()
+        x = self.conv4(x, edge_index, edge_attr)
         return x
 
 
@@ -377,9 +383,10 @@ class eGCNN(nn.Module):
         # Set random seed for reproducibility
         torch.manual_seed(12345)
 
-        self.linear1 = Linear(n_node_features+n_graph_features+1, 64)  # Introducing node features + previous edge attribute
-        self.linear2 = Linear(64, 32)  # Introducing node features + previous edge attribute
-        self.linear3 = Linear(32, 1)  # Predicting one single weight
+        self.linear1 = Linear(n_node_features+n_graph_features+1, 128)  # Introducing node features + previous edge attribute
+        self.linear2 = Linear(128, 256)  # Introducing node features + previous edge attribute
+        self.linear3 = Linear(256, 64)  # Introducing node features + previous edge attribute
+        self.linear4 = Linear(64, 1)  # Predicting one single weight
 
         self.pdropout = pdropout
 
@@ -403,10 +410,12 @@ class eGCNN(nn.Module):
         x = self.linear2(x)
         x = x.relu()
         x = self.linear3(x)
+        x = x.relu()
+        x = self.linear4(x)
         return x
 
 
-def get_graph_losses(graph1, graph2, batch_size):
+def get_graph_losses(graph1, graph2):
     """Calculate loss values for node features and edge attributes between two graphs.
     Depending on the size of the graphs, calculating MSE loss directly might be memory-intensive.
     Processing that in batches or subsets of nodes/edges can be more appropriate.
