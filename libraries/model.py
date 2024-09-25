@@ -358,6 +358,9 @@ class nGCNN(torch.nn.Module):
         self.conv4 = GraphConv(256, 64)  # Predicting node features
         self.conv5 = GraphConv(64, n_node_features)  # Predicting node features
 
+        self.norm1 = torch.nn.BatchNorm1d(256)
+        self.norm2 = torch.nn.BatchNorm1d(64)
+
         self.pdropout = pdropout
 
     def forward(self, x, edge_index, edge_attr):
@@ -365,10 +368,12 @@ class nGCNN(torch.nn.Module):
         x = self.conv1(x, edge_index, edge_attr)
         x = x.relu()
         x = self.conv2(x, edge_index, edge_attr)
+        x = self.norm1(x)
         x = x.relu()
         x = self.conv3(x, edge_index, edge_attr)
         x = x.relu()
         x = self.conv4(x, edge_index, edge_attr)
+        x = self.norm2(x)
         x = x.relu()
         x = self.conv5(x, edge_index, edge_attr)
         return x
