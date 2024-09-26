@@ -87,7 +87,7 @@ def get_random_graph(n_nodes, n_features, in_edge_index=None):
     return graph
 
 
-def diffuse(batch_0, n_diffusing_steps, s=1e-2, plot_steps=False):
+def diffuse(batch_0, n_diffusing_steps, s=1e-2, plot_steps=False, ouput_all_graphs=False):
     """Performs consecutive steps of diffusion in a reference batch of graphs.
 
     Args:
@@ -102,6 +102,10 @@ def diffuse(batch_0, n_diffusing_steps, s=1e-2, plot_steps=False):
 
     # Clone batch of graphs
     batch_t = batch_0.clone()
+
+    # Append all graphs for debugging
+    if ouput_all_graphs:
+        all_graphs = []
     
     # Define t_steps starting from 1 to n_t_steps+1
     t_steps = np.arange(1, n_diffusing_steps+1)
@@ -114,10 +118,13 @@ def diffuse(batch_0, n_diffusing_steps, s=1e-2, plot_steps=False):
             # Convert PyTorch graph to NetworkX graph
             networkx_graph = to_networkx(batch_t)
             pos            = nx.spring_layout(networkx_graph)
-            nx.draw(networkx_graph, pos, with_labels=True, node_size=batch_t.x, font_size=10)
+            nx.draw(networkx_graph, pos, with_labels=True, node_size=batch_t.x.size()[1], font_size=10)
             plt.show()
 
         batch_t, _ = diffusion_step(batch_t, t, n_diffusing_steps, s)
+        
+        if ouput_all_graphs:
+            all_graphs.append(batch_t)
     
     # Check if intermediate steps are plotted; then, plot the NetworkX graph
     if plot_steps:
@@ -126,6 +133,8 @@ def diffuse(batch_0, n_diffusing_steps, s=1e-2, plot_steps=False):
         pos            = nx.spring_layout(networkx_graph)
         nx.draw(networkx_graph, pos, with_labels=True, node_size=batch_t.x, font_size=10)
         plt.show()
+    if ouput_all_graphs:
+        return batch_t, all_graphs
     return batch_t
 
 
@@ -354,12 +363,9 @@ class nGCNN(torch.nn.Module):
         # Define graph convolution layers
         self.conv1 = GraphConv(n_node_features+n_graph_features, 128)  # Introducing node features
         self.conv2 = GraphConv(128, 256)  # Predicting node features
-        self.conv3 = GraphConv(256, 256)  # Predicting node features
-        self.conv4 = GraphConv(256, 64)  # Predicting node features
-        self.conv5 = GraphConv(64, n_node_features)  # Predicting node features
+        self.conv3 = GraphConv(256, n_node_features)  # Predicting node features
 
         self.norm1 = torch.nn.BatchNorm1d(256)
-        self.norm2 = torch.nn.BatchNorm1d(64)
 
         self.pdropout = pdropout
 
@@ -371,11 +377,6 @@ class nGCNN(torch.nn.Module):
         x = self.norm1(x)
         x = x.relu()
         x = self.conv3(x, edge_index, edge_attr)
-        x = x.relu()
-        x = self.conv4(x, edge_index, edge_attr)
-        x = self.norm2(x)
-        x = x.relu()
-        x = self.conv5(x, edge_index, edge_attr)
         return x
 
 
