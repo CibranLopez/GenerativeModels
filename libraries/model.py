@@ -394,10 +394,8 @@ class eGCNN(nn.Module):
         torch.manual_seed(12345)
 
         self.linear1 = Linear(n_node_features+n_graph_features+1, 128)  # Introducing node features + previous edge attribute
-        self.linear2 = Linear(128, 256)  # Introducing node features + previous edge attribute
-        self.linear3 = Linear(256, 256)  # Introducing node features + previous edge attribute
-        self.linear4 = Linear(256, 64)  # Introducing node features + previous edge attribute
-        self.linear5 = Linear(64, 1)  # Predicting one single weight
+        self.linear2 = Linear(128, 64)  # Introducing node features + previous edge attribute
+        self.linear3 = Linear(64, 1)  # Predicting one single weight
 
         self.pdropout = pdropout
 
@@ -421,10 +419,6 @@ class eGCNN(nn.Module):
         x = self.linear2(x)
         x = x.relu()
         x = self.linear3(x)
-        x = x.relu()
-        x = self.linear4(x)
-        x = x.relu()
-        x = self.linear5(x)
         return x
 
 
