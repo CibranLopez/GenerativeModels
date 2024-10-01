@@ -5,6 +5,28 @@ import torch
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
+def check_finite_attributes(data):
+    """
+    Checks if all node and edge attributes in the graph are finite (i.e., not NaN, inf, or -inf).
+
+    Args:
+        data: A graph object containing node attributes (`data.x`) and edge attributes (`data.edge_attr`).
+
+    Returns:
+        bool: 
+            - True if all node and edge attributes are finite.
+            - False if any node or edge attributes are NaN, inf, or -inf.
+    """
+    # Check node attributes
+    if not torch.any(torch.isfinite(data.x)):
+        return False
+
+    # Check edge attributes
+    if not torch.any(torch.isfinite(data.edge_attr)):
+        return False
+    return True
+
+
 def standardize_dataset(dataset, transformation=None):
     """Standardizes a given dataset (both nodes features and edge attributes).
     Typically, a normal distribution is applied, although it be easily modified to apply other distributions.
@@ -22,10 +44,10 @@ def standardize_dataset(dataset, transformation=None):
     """
 
     # Clone the dataset (using a list comprehension)
-    dataset_std = [graph.clone() for graph in dataset]
+    dataset_std = [graph.clone() for graph in dataset if check_finite_attributes(graph)]
 
     # Number of graphs
-    n_graphs   = len(dataset_std)
+    n_graphs = len(dataset_std)
     
     # Number of features per node
     n_features = dataset_std[0].num_node_features
@@ -126,22 +148,31 @@ def revert_standardize_dataset(dataset, dataset_parameters):
     return dataset_rstd
 
 
-def get_datasets(labels, material_labels, dataset):
-    """Get datasets filtered by labels.
+def get_datasets(subset_labels, dataset_labels, dataset):
+    """Get datasets filtered, non-ordered by labels.
 
     Args:
-        labels (list): List of labels to filter by.
-        material_labels (list): List of material labels.
-        dataset (list): List of data elements.
+        subset_labels  (list): List of labels to filter by.
+        dataset_labels (list): List of material labels.
+        dataset        (list): List of data elements.
 
     Returns:
-        list: Filtered dataset containing elements corresponding to the specified labels.
+        list: Filtered dataset containing elements corresponding to the specified labels (not ordered).
     """
-    label_idxs = []
-    for label in labels:
-        idxs = [i for i, material_label in enumerate(material_labels) if material_label.split()[0] == label]
-        label_idxs.extend(idxs)
-    return [dataset[idx] for idx in label_idxs]
+
+    subset_labels  = np.array(subset_labels)
+    dataset_labels = np.array(dataset_labels)
+    
+    dataset_idxs = []
+    for dataset_idx, dataset_label in enumerate(dataset_labels):
+        for subset_idx, subset_label in enumerate(subset_labels):
+            if dataset_label.split()[0] == subset_label:
+                dataset_idxs.append(dataset_idx)
+                subset_labels = np.delete(subset_labels, subset_idx)
+                break
+        if not len(subset_labels):
+            break
+    return [dataset[idx] for idx in dataset_idxs]
 
 
 def check_extend_POSCAR(structure, minimum_lattice_vector):
