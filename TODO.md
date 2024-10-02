@@ -1,6 +1,6 @@
 Project: Generative library
 
-Cibran: Check other approaches for edge attribute prediction.
+Cibran: Check other approaches for edge attribute prediction (line graphs).
 
 Cibran: When introducing graph-level embeddings, explore convoluting node and graph-level separately and then convolving those latent representations together. Explore how these approaches have been implemented before in AI.
 
