@@ -29,8 +29,8 @@ def get_alpha_t(t, T, s):
         alpha (float): parameter which controls the velocity of diffusion or denoising.
     """
 
-    #return torch.tensor((1 - 2 * s) * (1 - (t / T) ** 2) + 2 * s).to(device)
-    return torch.tensor((1 - 2 * s) * (1 - (t / (T+1)) ** 2) + s).to(device)
+    #return torch.tensor((1 - 2 * s) * (1 - (t / T) ** 2) + 2 * s)
+    return torch.tensor((1 - 2 * s) * (1 - (t / (T+1))**2) + s)
 
 
 def get_random_graph(n_nodes, n_features, in_edge_index=None):
@@ -199,15 +199,13 @@ def denoise(batch_t, n_t_steps, node_model, edge_model, n_graph_embbedings, s=1e
     batch_size_0 = batch_0.num_graphs
 
     # Save graph-level embeddings
-    embedding_batch_0 = []
-    for idx in range(batch_size_0):
-        embedding_batch_0.append(batch_0[idx].y.detach().to(device))
+    embedding_batch_0 = [g_batch_0[idx].y for idx in range(batch_size_0)] 
 
     # Define t_steps as inverse of the diffuse process
-    t_steps = np.arange(1, n_t_steps+1)[::-1]
+    t_steps = torch.range(1,  n_t_steps+1, device=device)[::-1]
     for t_step in t_steps:
         # Read time step, which is added to node-level graph embeddings
-        t_step_std = torch.tensor([t_step / n_t_steps - 0.5], dtype=torch.float).to(device)  # Standard normalization
+        t_step_std = torch.tensor([t_step / n_t_steps - 0.5], dtype=torch.float)  # Standard normalization
 
         # Denoise the diffused graph
         #print(f'Denoising...')
@@ -216,14 +214,14 @@ def denoise(batch_t, n_t_steps, node_model, edge_model, n_graph_embbedings, s=1e
         g_batch_0 = []
         for idx in range(batch_size_0):
             g_batch_0.append(batch_0[idx].clone())
-
-            # Add t_step information to graph_t as node embeddings
-            g_batch_0[idx] = add_features_to_graph(g_batch_0[idx],
-                                                   t_step_std)  # To match graph.y shape, which is 1D
-
+            
             # Add graph-level embedding to graph_t as node embeddings
             g_batch_0[idx] = add_features_to_graph(g_batch_0[idx],
                                                    embedding_batch_0[idx])  # To match graph.y shape
+            
+            # Add t_step information to graph_t as node embeddings
+            g_batch_0[idx] = add_features_to_graph(g_batch_0[idx],
+                                                   t_step_std)  # To match graph.y shape, which is 1D
 
         # Generate batch objects
         g_batch_0 = Batch.from_data_list(g_batch_0)
@@ -285,8 +283,8 @@ def predict_noise(g_batch_t, node_model, edge_model):
     out_attr = edge_model(x_i, x_j, g_batch_t.edge_attr)
 
     # Moving data to device
-    out_x    = out_x.to(device)
-    out_attr = out_attr.to(device).ravel()
+    out_x    = out_x
+    out_attr = out_attr.ravel()
 
     # Construct noise graph with predicted node features and edge attributes, and previous edge indexes
     idx_x_i    = 0

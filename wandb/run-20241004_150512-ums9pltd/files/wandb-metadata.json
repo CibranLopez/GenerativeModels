@@ -1,0 +1,207 @@
+{
+    "os": "Linux-6.8.0-45-generic-x86_64-with-glibc2.35",
+    "python": "3.10.12",
+    "heartbeatAt": "2024-10-04T13:05:12.900356",
+    "startedAt": "2024-10-04T13:05:12.325155",
+    "docker": null,
+    "cuda": null,
+    "args": [],
+    "state": "running",
+    "program": "GNN.ipynb",
+    "codePathLocal": "GNN.ipynb",
+    "root": "/home/claudio/cibran/Work/UPC/GenerativeModels",
+    "git": {
+        "remote": "https://github.com/CibranLopez/GenerativeModels.git",
+        "commit": "624e5b7ad7d2988783aef17e317ce6b79124fc79"
+    },
+    "email": "cibranlpz@gmail.com",
+    "host": "PC70790",
+    "username": "claudio",
+    "executable": "/usr/bin/python3",
+    "cpu_count": 16,
+    "cpu_count_logical": 32,
+    "cpu_freq": {
+        "current": 2882.5911562499996,
+        "min": 400.0,
+        "max": 5881.0
+    },
+    "cpu_freq_per_core": [
+        {
+            "current": 5423.512,
+            "min": 400.0,
+            "max": 5881.0
+        },
+        {
+            "current": 400.0,
+            "min": 400.0,
+            "max": 5881.0
+        },
+        {
+            "current": 400.0,
+            "min": 400.0,
+            "max": 5881.0
+        },
+        {
+            "current": 400.0,
+            "min": 400.0,
+            "max": 5881.0
+        },
+        {
+            "current": 400.0,
+            "min": 400.0,
+            "max": 5881.0
+        },
+        {
+            "current": 400.0,
+            "min": 400.0,
+            "max": 5881.0
+        },
+        {
+            "current": 5410.01,
+            "min": 400.0,
+            "max": 5881.0
+        },
+        {
+            "current": 5428.693,
+            "min": 400.0,
+            "max": 5881.0
+        },
+        {
+            "current": 5326.867,
+            "min": 400.0,
+            "max": 5881.0
+        },
+        {
+            "current": 3543.549,
+            "min": 400.0,
+            "max": 5881.0
+        },
+        {
+            "current": 400.0,
+            "min": 400.0,
+            "max": 5881.0
+        },
+        {
+            "current": 5339.611,
+            "min": 400.0,
+            "max": 5881.0
+        },
+        {
+            "current": 3532.589,
+            "min": 400.0,
+            "max": 5881.0
+        },
+        {
+            "current": 400.0,
+            "min": 400.0,
+            "max": 5881.0
+        },
+        {
+            "current": 3575.645,
+            "min": 400.0,
+            "max": 5881.0
+        },
+        {
+            "current": 3523.572,
+            "min": 400.0,
+            "max": 5881.0
+        },
+        {
+            "current": 5416.574,
+            "min": 400.0,
+            "max": 5881.0
+        },
+        {
+            "current": 400.0,
+            "min": 400.0,
+            "max": 5881.0
+        },
+        {
+            "current": 5416.673,
+            "min": 400.0,
+            "max": 5881.0
+        },
+        {
+            "current": 400.0,
+            "min": 400.0,
+            "max": 5881.0
+        },
+        {
+            "current": 400.0,
+            "min": 400.0,
+            "max": 5881.0
+        },
+        {
+            "current": 400.0,
+            "min": 400.0,
+            "max": 5881.0
+        },
+        {
+            "current": 5138.977,
+            "min": 400.0,
+            "max": 5881.0
+        },
+        {
+            "current": 400.0,
+            "min": 400.0,
+            "max": 5881.0
+        },
+        {
+            "current": 5361.081,
+            "min": 400.0,
+            "max": 5881.0
+        },
+        {
+            "current": 400.0,
+            "min": 400.0,
+            "max": 5881.0
+        },
+        {
+            "current": 3546.377,
+            "min": 400.0,
+            "max": 5881.0
+        },
+        {
+            "current": 400.0,
+            "min": 400.0,
+            "max": 5881.0
+        },
+        {
+            "current": 400.0,
+            "min": 400.0,
+            "max": 5881.0
+        },
+        {
+            "current": 4428.407,
+            "min": 400.0,
+            "max": 5881.0
+        },
+        {
+            "current": 3557.993,
+            "min": 400.0,
+            "max": 5881.0
+        },
+        {
+            "current": 5367.516,
+            "min": 400.0,
+            "max": 5881.0
+        }
+    ],
+    "disk": {
+        "/": {
+            "total": 915.3232879638672,
+            "used": 837.8962478637695
+        }
+    },
+    "gpu": "NVIDIA GeForce RTX 4090",
+    "gpu_count": 1,
+    "gpu_devices": [
+        {
+            "name": "NVIDIA GeForce RTX 4090",
+            "memory_total": 25757220864
+        }
+    ],
+    "memory": {
+        "total": 62.010101318359375
+    }
+}
