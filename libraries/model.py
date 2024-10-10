@@ -347,7 +347,7 @@ def denoising_step(graph_t, epsilon, t, n_t_steps, s, sigma):
 
 
 class nGCNN(torch.nn.Module):
-    """Graph convolution neural network for the prediction of node embeddings.
+    """Graph convolutional neural network for the prediction of node embeddings.
     The network consists of recursive convolutional layers, which input node features plus graph level embeddings
     while it outputs updated node level embeddings.
     """
@@ -360,7 +360,7 @@ class nGCNN(torch.nn.Module):
 
         # Define graph convolution layers
         self.conv1 = GraphConv(n_node_features+n_graph_features, 128)  # Introducing node features
-        self.conv2 = GraphConv(128, 256)  # Predicting node features
+        self.conv2 = GraphConv(128, 256)  # Convolutional layer
         self.conv3 = GraphConv(256, n_node_features)  # Predicting node features
 
         self.norm1 = torch.nn.BatchNorm1d(256)
@@ -379,9 +379,9 @@ class nGCNN(torch.nn.Module):
 
 
 class eGCNN(nn.Module):
-    """Graph convolution neural network for the prediction of edge attributes.
+    """Convolutional neural network for the prediction of edge attributes.
     Predictions of the new link arise from the product of the two involved nodes and the previous edge attribute.
-    The network consists of recursive convolutional layers, which input node features plus graph level embeddings
+    The network consists of recursive convolutional layers, which input edge attribute plus graph level embeddings
     and plus previous edge attribute embeddings while it outputs updated attribute embeddings.
     """
 
@@ -392,7 +392,7 @@ class eGCNN(nn.Module):
         torch.manual_seed(12345)
 
         self.linear1 = Linear(n_node_features+n_graph_features+1, 128)  # Introducing node features + previous edge attribute
-        self.linear2 = Linear(128, 64)  # Introducing node features + previous edge attribute
+        self.linear2 = Linear(128, 64)  # Convolutional layer
         self.linear3 = Linear(64, 1)  # Predicting one single weight
 
         self.pdropout = pdropout
@@ -401,6 +401,50 @@ class eGCNN(nn.Module):
         # Dot product between node distances
         x_i[:, :-1] = torch.pow(x_i[:, :-1] - x_j[:, :-1], 2)  # Of dimension [..., features_channels]
         
+        # Reshape previous_attr tensor to have the same number of dimensions as x
+        previous_attr = previous_attr.view(-1, 1)  # Reshapes from [...] to [..., 1]
+
+        # Concatenate the tensors along dimension 1 to get a tensor of size [..., num_embeddings ~ 6]
+        x = torch.cat((x_i, previous_attr), dim=1)
+
+        # Apply linear convolution with ReLU activation function
+        x = self.linear1(x)
+
+        # Dropout layer (only for training)
+        x = F.dropout(x, p=self.pdropout, training=self.training)
+
+        # Last linear convolution
+        x = self.linear2(x)
+        x = x.relu()
+        x = self.linear3(x)
+        return x
+
+
+class line_eGCNN(nn.Module):
+    """Graph convolutional neural network for the prediction of edge attributes.
+    In this implementation, we use line-graphs, exploiding the power of GNNs from link prediction.
+    Predictions of the new link arise from the product of the two involved nodes and the previous edge attribute.
+    The network consists of recursive convolutional layers, which input edge features plus graph level embeddings
+    and plus previous edge attribute embeddings while it outputs updated attribute embeddings.
+    """
+
+    def __init__(self, n_node_features, n_graph_features, pdropout):
+        super(line_eGCNN, self).__init__()
+
+        # Set random seed for reproducibility
+        torch.manual_seed(12345)
+
+        self.linear1 = Linear(n_node_features + n_graph_features + 1,
+                              128)  # Introducing node features + previous edge attribute
+        self.linear2 = Linear(128, 64)  # Convolutional layer
+        self.linear3 = Linear(64, 1)  # Predicting one single weight
+
+        self.pdropout = pdropout
+
+    def forward(self, x_i, x_j, previous_attr):
+        # Dot product between node distances
+        x_i[:, :-1] = torch.pow(x_i[:, :-1] - x_j[:, :-1], 2)  # Of dimension [..., features_channels]
+
         # Reshape previous_attr tensor to have the same number of dimensions as x
         previous_attr = previous_attr.view(-1, 1)  # Reshapes from [...] to [..., 1]
 
