@@ -1,0 +1,112 @@
+Number of training   graphs: 83227
+Number of validation graphs: 10404
+Number of testing    graphs: 10403
+GCNN(
+  (conv1): GraphConv(4, 512)
+  (conv2): GraphConv(512, 512)
+  (linconv1): Linear(in_features=512, out_features=64, bias=True)
+  (linconv2): Linear(in_features=64, out_features=1, bias=True)
+  (norm1): BatchNorm1d(512, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+)
+Epoch: 1, Train MAE: 1.4385, Val MAE: 1.4251
+Epoch: 2, Train MAE: 1.3817, Val MAE: 1.3789
+Epoch: 3, Train MAE: 1.3487, Val MAE: 1.3462
+Epoch: 4, Train MAE: 1.3332, Val MAE: 1.3395
+Epoch: 5, Train MAE: 1.3246, Val MAE: 1.3390
+Epoch: 6, Train MAE: 1.3204, Val MAE: 1.3304
+Epoch: 7, Train MAE: 1.3139, Val MAE: 1.3272
+Epoch: 8, Train MAE: 1.3110, Val MAE: 1.3193
+Epoch: 9, Train MAE: 1.3080, Val MAE: 1.3227
+Epoch: 10, Train MAE: 1.3037, Val MAE: 1.3243
+Epoch: 11, Train MAE: 1.3011, Val MAE: 1.3220
+Epoch: 12, Train MAE: 1.2959, Val MAE: 1.3077
+Epoch: 13, Train MAE: 1.2938, Val MAE: 1.3316
+Epoch: 14, Train MAE: 1.2898, Val MAE: 1.3088
+Epoch: 15, Train MAE: 1.2878, Val MAE: 1.2994
+Epoch: 16, Train MAE: 1.2827, Val MAE: 1.2993
+Epoch: 17, Train MAE: 1.2830, Val MAE: 1.2932
+Epoch: 18, Train MAE: 1.2784, Val MAE: 1.2937
+Epoch: 19, Train MAE: 1.2762, Val MAE: 1.2958
+Epoch: 20, Train MAE: 1.2761, Val MAE: 1.2982
+Epoch: 21, Train MAE: 1.2733, Val MAE: 1.2825
+Epoch: 22, Train MAE: 1.2711, Val MAE: 1.2871
+Epoch: 23, Train MAE: 1.2676, Val MAE: 1.2762
+Epoch: 24, Train MAE: 1.2675, Val MAE: 1.2781
+Epoch: 25, Train MAE: 1.2643, Val MAE: 1.2967
+Epoch: 26, Train MAE: 1.2619, Val MAE: 1.2945
+Epoch: 27, Train MAE: 1.2612, Val MAE: 1.2764
+Epoch: 28, Train MAE: 1.2603, Val MAE: 1.2737
+Epoch: 29, Train MAE: 1.2579, Val MAE: 1.2737
+Epoch: 30, Train MAE: 1.2583, Val MAE: 1.2691
+Epoch: 31, Train MAE: 1.2553, Val MAE: 1.2699
+Epoch: 32, Train MAE: 1.2539, Val MAE: 1.2720
+Epoch: 33, Train MAE: 1.2510, Val MAE: 1.2689
+Epoch: 34, Train MAE: 1.2502, Val MAE: 1.2739
+Epoch: 35, Train MAE: 1.2497, Val MAE: 1.2758
+Epoch: 36, Train MAE: 1.2487, Val MAE: 1.2618
+Epoch: 37, Train MAE: 1.2478, Val MAE: 1.2678
+Epoch: 38, Train MAE: 1.2459, Val MAE: 1.2607
+Epoch: 39, Train MAE: 1.2453, Val MAE: 1.2584
+Epoch: 40, Train MAE: 1.2470, Val MAE: 1.2682
+Epoch: 41, Train MAE: 1.2431, Val MAE: 1.2553
+Epoch: 42, Train MAE: 1.2421, Val MAE: 1.2570
+Epoch: 43, Train MAE: 1.2420, Val MAE: 1.2575
+Epoch: 44, Train MAE: 1.2387, Val MAE: 1.2533
+Epoch: 45, Train MAE: 1.2386, Val MAE: 1.2565
+Epoch: 46, Train MAE: 1.2380, Val MAE: 1.2572
+Epoch: 47, Train MAE: 1.2375, Val MAE: 1.2557
+Epoch: 48, Train MAE: 1.2384, Val MAE: 1.2595
+Epoch: 49, Train MAE: 1.2347, Val MAE: 1.2533
+Epoch: 50, Train MAE: 1.2354, Val MAE: 1.2538
+Epoch: 51, Train MAE: 1.2335, Val MAE: 1.2549
+Epoch: 52, Train MAE: 1.2331, Val MAE: 1.2537
+Epoch: 53, Train MAE: 1.2307, Val MAE: 1.2595
+Epoch: 54, Train MAE: 1.2321, Val MAE: 1.2506
+Epoch: 55, Train MAE: 1.2288, Val MAE: 1.2581
+Epoch: 56, Train MAE: 1.2308, Val MAE: 1.2523
+Epoch: 57, Train MAE: 1.2294, Val MAE: 1.2488
+Epoch: 58, Train MAE: 1.2289, Val MAE: 1.2450
+Epoch: 59, Train MAE: 1.2300, Val MAE: 1.2543
+Epoch: 60, Train MAE: 1.2271, Val MAE: 1.2567
+Epoch: 61, Train MAE: 1.2285, Val MAE: 1.2618
+Epoch: 62, Train MAE: 1.2240, Val MAE: 1.2512
+Epoch: 63, Train MAE: 1.2274, Val MAE: 1.2478
+Epoch: 64, Train MAE: 1.2263, Val MAE: 1.2464
+Epoch: 65, Train MAE: 1.2240, Val MAE: 1.2455
+Epoch: 66, Train MAE: 1.2215, Val MAE: 1.2451
+Epoch: 67, Train MAE: 1.2226, Val MAE: 1.2438
+Epoch: 68, Train MAE: 1.2220, Val MAE: 1.2399
+Epoch: 69, Train MAE: 1.2197, Val MAE: 1.2444
+Epoch: 70, Train MAE: 1.2202, Val MAE: 1.2469
+Epoch: 71, Train MAE: 1.2182, Val MAE: 1.2467
+Epoch: 72, Train MAE: 1.2190, Val MAE: 1.2382
+Epoch: 73, Train MAE: 1.2182, Val MAE: 1.2411
+Epoch: 74, Train MAE: 1.2197, Val MAE: 1.2418
+Epoch: 75, Train MAE: 1.2163, Val MAE: 1.2364
+Epoch: 76, Train MAE: 1.2165, Val MAE: 1.2390
+Epoch: 77, Train MAE: 1.2161, Val MAE: 1.2391
+Epoch: 78, Train MAE: 1.2163, Val MAE: 1.2365
+Epoch: 79, Train MAE: 1.2137, Val MAE: 1.2346
+Epoch: 80, Train MAE: 1.2139, Val MAE: 1.2395
+Epoch: 81, Train MAE: 1.2147, Val MAE: 1.2397
+Epoch: 82, Train MAE: 1.2150, Val MAE: 1.2296
+Epoch: 83, Train MAE: 1.2135, Val MAE: 1.2404
+Epoch: 84, Train MAE: 1.2132, Val MAE: 1.2338
+Epoch: 85, Train MAE: 1.2112, Val MAE: 1.2422
+Epoch: 86, Train MAE: 1.2131, Val MAE: 1.2340
+Epoch: 87, Train MAE: 1.2123, Val MAE: 1.2349
+Epoch: 88, Train MAE: 1.2104, Val MAE: 1.2358
+Epoch: 89, Train MAE: 1.2116, Val MAE: 1.2500
+Epoch: 90, Train MAE: 1.2080, Val MAE: 1.2593
+Epoch: 91, Train MAE: 1.2087, Val MAE: 1.2423
+Epoch: 92, Train MAE: 1.2082, Val MAE: 1.2396
+Epoch: 93, Train MAE: 1.2084, Val MAE: 1.2315
+Epoch: 94, Train MAE: 1.2074, Val MAE: 1.2291
+Epoch: 95, Train MAE: 1.2063, Val MAE: 1.2264
+Epoch: 96, Train MAE: 1.2086, Val MAE: 1.2341
+Epoch: 97, Train MAE: 1.2069, Val MAE: 1.2379
+Epoch: 98, Train MAE: 1.2054, Val MAE: 1.2268
+Epoch: 99, Train MAE: 1.2055, Val MAE: 1.2323
+Epoch: 100, Train MAE: 1.2052, Val MAE: 1.2276
+The PostScript backend does not support transparency; partially transparent artists will be rendered opaque.
+Train MAE: 1.2065, Val MAE: 1.2412, Test MAE: 1.2245
