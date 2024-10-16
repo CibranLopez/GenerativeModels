@@ -27,24 +27,32 @@ def check_finite_attributes(data):
     return True
 
 
-def standardize_dataset(dataset, transformation=None):
+def standardize_dataset(dataset, labels, transformation=None):
     """Standardizes a given dataset (both nodes features and edge attributes).
     Typically, a normal distribution is applied, although it be easily modified to apply other distributions.
+    Check those graphs with finite attributes and retains labels accordingly.
 
     Currently: normal distribution.
 
     Args:
         dataset        (list): List containing graph structures.
+        labels         (list): List containing graph labels.
         transformation (str):  Type of transformation strategy for edge attributes (None, 'inverse-quadratic').
 
     Returns:
         Tuple: A tuple containing the normalized dataset and parameters needed to re-scale predicted properties.
             - dataset_std        (list): Normalized dataset.
+            - labels_std         (list): Labels from valid graphs.
             - dataset_parameters (dict): Parameters needed to re-scale predicted properties from the dataset.
     """
 
-    # Clone the dataset (using a list comprehension)
-    dataset_std = [graph.clone() for graph in dataset if check_finite_attributes(graph)]
+    # Clone the dataset and labels
+    dataset_std = []
+    labels_std  = []
+    for graph, label in zip(dataset, labels):
+        if check_finite_attributes(graph):
+            dataset_std.append(graph.clone())
+            labels_std.append(label)
 
     # Number of graphs
     n_graphs = len(dataset_std)
@@ -114,7 +122,7 @@ def standardize_dataset(dataset, transformation=None):
         'feat_std':       feat_std,
         'scale':          scale
     }
-    return dataset_std, dataset_parameters
+    return dataset_std, labels_std, dataset_parameters
 
 
 def revert_standardize_dataset(dataset, dataset_parameters):

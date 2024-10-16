@@ -30,7 +30,7 @@ def get_alpha_t(t, T, s):
     """
 
     #return torch.tensor((1 - 2 * s) * (1 - (t / T) ** 2) + 2 * s)
-    return torch.tensor((1 - 2 * s) * (1 - (t / (T+1))**2) + s)
+    return (1 - 2 * s) * (1 - (t / (T+1))**2) + s
 
 
 def get_random_graph(n_nodes, n_features, in_edge_index=None):
