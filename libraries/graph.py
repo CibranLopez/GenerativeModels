@@ -541,7 +541,7 @@ def graph_POSCAR_encoding(structure, encoding_type='voronoi', distance_threshold
 
     # Loading dictionary of atomic masses
     atomic_data = {}
-    with open('../MP/input/atomic_masses.dat', 'r') as atomic_data_file:
+    with open('/home/claudio/cibran/Work/UPC/MP/input/atomic_masses.dat', 'r') as atomic_data_file:
         for line in atomic_data_file:
             key, atomic_mass, charge, electronegativity, ionization_energy = line.split()
             atomic_data[key] = {
@@ -623,7 +623,7 @@ def discretize_graph(graph):
 
     # Load the dictionary of available embeddings for atoms
     available_embeddings = {}
-    with open('../VASP/atomic_masses.dat', 'r') as atomic_masses_file:
+    with open('/home/claudio/cibran/Work/UPC/MP/input/atomic_masses.dat', 'r') as atomic_masses_file:
         for line in atomic_masses_file:
             (key, mass, charge, electronegativity, ionization_energy) = line.split()
 
@@ -715,7 +715,7 @@ def POSCAR_graph_encoding(graph, lattice_vectors, file_name='POSCAR', POSCAR_nam
 
     # Loading dictionary of available embeddings for atoms
     available_embeddings = {}
-    with open('../VASP/atomic_masses.dat', 'r') as atomic_masses_file:
+    with open('/home/claudio/cibran/Work/UPC/MP/input/atomic_masses.dat', 'r') as atomic_masses_file:
         for line in atomic_masses_file:
             key, mass, charge, electronegativity, ionization_energy = line.split()
 
