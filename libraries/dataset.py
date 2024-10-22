@@ -177,7 +177,6 @@ def get_datasets(subset_labels, dataset_labels, dataset):
             if dataset_label.split()[0] == subset_label:
                 dataset_idxs.append(dataset_idx)
                 subset_labels = np.delete(subset_labels, subset_idx)
-                break
         if not len(subset_labels):
             break
     return [dataset[idx] for idx in dataset_idxs]
