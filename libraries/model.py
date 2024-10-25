@@ -121,7 +121,9 @@ def diffuse(batch_0, n_diffusing_steps, s=1e-2, plot_steps=False, ouput_all_grap
             nx.draw(networkx_graph, pos, with_labels=True, node_size=batch_t.x.size()[1], font_size=10)
             plt.show()
 
-        batch_t, _ = diffusion_step(batch_t, t, n_diffusing_steps, s)
+        # Compute alpha_t
+        alpha_t = get_alpha_t(t, n_diffusing_steps, s)
+        batch_t, _ = diffusion_step(batch_t, alpha_t)
         
         if ouput_all_graphs:
             all_graphs.append(batch_t)
@@ -138,7 +140,7 @@ def diffuse(batch_0, n_diffusing_steps, s=1e-2, plot_steps=False, ouput_all_grap
     return batch_t
 
 
-def diffusion_step(graph_0, t, n_diffusing_steps, s):
+def diffusion_step(graph_0, alpha_t):
     """Performs a forward step of a diffusive, Markov chain.
     
     G (t) = \sqrt{\alpha (t)} G (t-1) + \sqrt{1 - \alpha (t)} N (t)
@@ -146,10 +148,8 @@ def diffusion_step(graph_0, t, n_diffusing_steps, s):
     with G a graph and N noise.
 
     Args:
-        graph_0           (torch_geometric.data.Data): Graph which is to be diffused (step t-1).
-        t                 (float):                     Step of the diffusion process.
-        n_diffusing_steps (int):                       Number of diffusion steps.
-        s                 (float):                     Parameter which controls the decay of alpha with t.
+        graph_0 (torch_geometric.data.Data): Graph which is to be diffused (step t-1).
+        alpha_t (float):                     Constant from the step of the diffusion process.
     Returns:
         graph_t (torch_geometric.data.Data): Diffused graph (step t).
     """
@@ -162,9 +162,6 @@ def diffusion_step(graph_0, t, n_diffusing_steps, s):
 
     # Generate gaussian (normal) noise
     epsilon_t = get_random_graph(n_nodes, n_features, graph_t.edge_index)
-
-    # Compute alpha_t
-    alpha_t = get_alpha_t(t, n_diffusing_steps, s)
 
     # Forward pass
     graph_t.x         = torch.sqrt(alpha_t) * graph_t.x         + torch.sqrt(1 - alpha_t) * epsilon_t.x
@@ -231,6 +228,8 @@ def denoise(batch_t, n_t_steps, node_model, edge_model, n_graph_embbedings, s=1e
 
         # Predict batch noise at given time step
         pred_epsilon_t = predict_noise(g_batch_0, node_model, edge_model)
+
+        # We predict
 
         # Check if intermediate steps are plotted; then, plot the NetworkX graph
         if plot_steps:
