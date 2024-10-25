@@ -482,7 +482,7 @@ def add_features_to_graph(graph_0, node_features):
 
     Args:
         graph_0       (torch_geometric.data.Data): The input graph containing edge indexes and attributes.
-        node_features (torch.array of size 2):     Information to be added to the graph (target,
+        node_features (torch.array of size 1):     Information to be added to the graph (target,
                                                    step of the diffusing/denoising process, etc.).
 
     Returns:
@@ -495,11 +495,8 @@ def add_features_to_graph(graph_0, node_features):
     if len(torch.Tensor.size(node_features)) != 1:
         sys.exit('Error: node_features does not have the expected size')
     
-    # Concatenate tensors along the second dimension (dim=1)
-    new_x = torch.cat((graph.x, node_features.unsqueeze(0).repeat(graph.x.size(0), 1)), dim=1)
-
-    # Update the graph with the new node features
-    graph.x = new_x
+    # Concatenate tensors along the second dimension (dim=1) and update the graph with the new node features
+    graph.x = torch.cat((graph.x, node_features.unsqueeze(0).repeat(graph.x.size(0), 1)), dim=1)
     return graph
 
 
