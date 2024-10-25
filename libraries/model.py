@@ -140,7 +140,7 @@ def diffuse(batch_0, n_diffusing_steps, s=1e-2, plot_steps=False, ouput_all_grap
     return batch_t
 
 
-def diffusion_step(graph_0, alpha_t):
+def diffusion_step(g_batch_0, alpha_t):
     """Performs a forward step of a diffusive, Markov chain.
     
     G (t) = \sqrt{\alpha (t)} G (t-1) + \sqrt{1 - \alpha (t)} N (t)
@@ -148,25 +148,26 @@ def diffusion_step(graph_0, alpha_t):
     with G a graph and N noise.
 
     Args:
-        graph_0 (torch_geometric.data.Data): Graph which is to be diffused (step t-1).
-        alpha_t (float):                     Constant from the step of the diffusion process.
+        g_batch_0 (Batch): Batch of graphs to be diffused.
+        alpha_t   (float): Constant from the step of the diffusion process.
     Returns:
         graph_t (torch_geometric.data.Data): Diffused graph (step t).
     """
 
-    # Clone graph that we are diffusing (not strictly necessary)
-    graph_t = graph_0.clone()
+    # Clone the original batch of graphs to prevent in-place modifications
+    g_batch_t = g_batch_0.clone()
 
-    # Number of nodes and features in the graph
-    n_nodes, n_features = torch.Tensor.size(graph_t.x)
+    # Number of nodes and features per graph
+    n_nodes = g_batch_t.x.size(0)
+    n_features = g_batch_t.x.size(1)
 
     # Generate gaussian (normal) noise
-    epsilon_t = get_random_graph(n_nodes, n_features, graph_t.edge_index)
+    epsilon_t = get_random_graph(n_nodes, n_features, g_batch_t.edge_index)
 
     # Forward pass
-    graph_t.x         = torch.sqrt(alpha_t) * graph_t.x         + torch.sqrt(1 - alpha_t) * epsilon_t.x
-    graph_t.edge_attr = torch.sqrt(alpha_t) * graph_t.edge_attr + torch.sqrt(1 - alpha_t) * epsilon_t.edge_attr
-    return graph_t, epsilon_t
+    g_batch_t.x         = torch.sqrt(alpha_t) * g_batch_t.x         + torch.sqrt(1 - alpha_t) * epsilon_t.x
+    g_batch_t.edge_attr = torch.sqrt(alpha_t) * g_batch_t.edge_attr + torch.sqrt(1 - alpha_t) * epsilon_t.edge_attr
+    return g_batch_t, epsilon_t
 
 
 def denoise(batch_t, n_t_steps, node_model, edge_model, n_graph_embbedings, s=1e-2, sigma=None, plot_steps=False):
