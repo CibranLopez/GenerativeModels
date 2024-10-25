@@ -18,7 +18,7 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 def get_alpha_t(t, T, s):
     """Defines constant alpha at time-step t, given a parameter s < 0.5 (else alpha increases).
     
-    \alpha (t) = (1 - 2 s) \left( 1 - \left( \frac{t}{T} \right)^2 \right) + s
+    \\alpha (t) = (1 - 2 s) \\left( 1 - \\left( \\frac{t}{T} \\right)^2 \\right) + s
 
     Args:
         t (int):   time step (of diffusion or denoising) in which alpha is required.
