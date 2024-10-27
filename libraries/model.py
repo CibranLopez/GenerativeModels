@@ -145,7 +145,7 @@ def diffusion_step(g_batch_0, alpha_t):
     
     G (t) = \sqrt{\alpha (t)} G (t-1) + \sqrt{1 - \alpha (t)} N (t)
     
-    with G a graph and N noise.
+    with G a graph and N noise. It allows for vectorization using batches.
 
     Args:
         g_batch_0 (Batch): Batch of graphs to be diffused.
@@ -158,7 +158,7 @@ def diffusion_step(g_batch_0, alpha_t):
     g_batch_t = g_batch_0.clone()
 
     # Number of nodes and features per graph
-    n_nodes = g_batch_t.x.size(0)
+    n_nodes    = g_batch_t.x.size(0)
     n_features = g_batch_t.x.size(1)
 
     # Generate gaussian (normal) noise
