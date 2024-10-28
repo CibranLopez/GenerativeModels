@@ -8,7 +8,7 @@ This technology is suitable for different applications: from discovering improve
 
 The main feature is the generation and interpolation of novel graphs given a reference database of them. However, this architecture can be directly applied to any other problem whose data is graph-like.
 
-A quick discussion of all these topics can be found in our [paper](https://www.overleaf.com/read/cjxhknmhpfpg#d4cb5f).
+An extended discussion on all these topics can be found in our [paper](https://www.overleaf.com/read/cjxhknmhpfpg#d4cb5f).
 
 ## Features
 
