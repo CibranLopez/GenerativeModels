@@ -6,8 +6,7 @@ The core technology behind this framework is based on deep convolutional layers 
 
 This technology is suitable for different applications: from discovering improved ionic conductors beyond current databases to generating molecules for efficient water splitting. Moreover, the model itself can be applied to a variety of problems (concretely, any problem which can be formulated in terms of graphs), such as proposing enhanced distributions in social networks or traffic. Then, although applied to crystal material generation, this repository is divided into two independent functionalities:
 
-- Database generation: Generation of graph database from a set of crystal material structure files. Here we implemented the cut-off and Voronoi tesselation strategies.
-- New materials generation: Generation and interpolation of novel graphs given a database of graphs (which can in fact be applied to any other problem whose data is graph-like).
+The main feature is the generation and interpolation of novel graphs given a reference database of them. However, this architecture can be directly applied to any other problem whose data is graph-like.
 
 A quick discussion of all these topics can be found in our [paper](https://www.overleaf.com/read/cjxhknmhpfpg#d4cb5f).
 
@@ -19,6 +18,19 @@ A quick discussion of all these topics can be found in our [paper](https://www.o
 - Graph-based representation of data for efficient modeling
 - Denoising process utilizing convolutional graph neural networks
 - High stability and reliability of generated crystals
+
+Concretely, you will find the following scripts:
+
+- GNN.ipynb: prediction of band-gaps in molecules and crystals via graph neural networks.
+- basic-example.ipynb: simplified script for checking diffusion and its parameters.
+- database-generation.ipynb: generates a graph database from a set of crystals or molecules.
+- graph-interpolation.ipynb: interpolates pairs of graphs based on some target property.
+- graph-prediction.ipynb: generates graphs based on some target property.
+- graph-to-POSCAR.ipynb: conversion of a graph structure into a POSCAR representing a molecule or a crystal.
+- model-training.ipynb: main code for training the diffusion models.
+- molecule-to-POSCAR.ipynb: script for converting a molecule database into a POSCAR-like one.
+
+while **libraries** contains all main functionalities and **tests** some test functions. 
 
 Please be aware that the code is under active development, bug reports are welcomed in the GitHub issues!
 
