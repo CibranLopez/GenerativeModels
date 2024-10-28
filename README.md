@@ -21,14 +21,19 @@ A quick discussion of all these topics can be found in our [paper](https://www.o
 
 Concretely, you will find the following scripts:
 
-- GNN.ipynb: prediction of band-gaps in molecules and crystals via graph neural networks.
-- basic-example.ipynb: simplified script for checking diffusion and its parameters.
-- database-generation.ipynb: generates a graph database from a set of crystals or molecules.
-- graph-interpolation.ipynb: interpolates pairs of graphs based on some target property.
-- graph-prediction.ipynb: generates graphs based on some target property.
-- graph-to-POSCAR.ipynb: conversion of a graph structure into a POSCAR representing a molecule or a crystal.
-- model-training.ipynb: main code for training the diffusion models.
-- molecule-to-POSCAR.ipynb: script for converting a molecule database into a POSCAR-like one.
+- Graph database generation:
+  - database-generation.ipynb: generates a graph database from a set of crystals or molecules.
+  - molecule-to-POSCAR.ipynb: script for converting a molecule database into a POSCAR-like one.
+
+- Property prediction:
+  - GNN.ipynb: prediction of band-gaps in molecules and crystals via graph neural networks.
+
+- Material generation:
+  - basic-example.ipynb: simplified script for checking diffusion and its parameters.
+  - model-training.ipynb: main code for training the diffusion models.
+  - graph-interpolation.ipynb: interpolates pairs of graphs based on some target property.
+  - graph-prediction.ipynb: generates graphs based on some target property.
+  - graph-to-POSCAR.ipynb: conversion of a graph structure into a POSCAR representing a molecule or a crystal.
 
 while **libraries** contains all main functionalities and **tests** some test functions. 
 
