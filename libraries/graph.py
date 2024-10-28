@@ -49,17 +49,17 @@ def get_atoms_in_box(particle_types, composition, cell, atomic_masses, charges, 
         # Get the initial position
         position_0 = positions[idx]
 
-        reference_distance_i = np.NaN  # So it outputs False when first compared with another distance
+        reference_distance_i = np.nan  # So it outputs False when first compared with another distance
         i = 0
         alpha_i = 1
         while True:
-            minimum_distance_i   = np.NaN
-            reference_distance_j = np.NaN
+            minimum_distance_i   = np.nan
+            reference_distance_j = np.nan
             j = 0
             alpha_j = 1
             while True:
-                minimum_distance_j   = np.NaN
-                reference_distance_k = np.NaN
+                minimum_distance_j   = np.nan
+                reference_distance_k = np.nan
                 k = 0
                 alpha_k = 1
                 while True:
@@ -407,17 +407,17 @@ def get_sphere_images_tessellation(atomic_data, structure, distance_threshold=6)
             # Get the initial position
             position_i = positions[index_i]
 
-            reference_distance_i = np.NaN  # So it outputs False when first compared with another distance
+            reference_distance_i = np.nan  # So it outputs False when first compared with another distance
             i = 0
             alpha_i = 1
             while True:
-                minimum_distance_i   = np.NaN
-                reference_distance_j = np.NaN
+                minimum_distance_i   = np.nan
+                reference_distance_j = np.nan
                 j = 0
                 alpha_j = 1
                 while True:
-                    minimum_distance_j   = np.NaN
-                    reference_distance_k = np.NaN
+                    minimum_distance_j   = np.nan
+                    reference_distance_k = np.nan
                     k = 0
                     alpha_k = 1
                     while True:
