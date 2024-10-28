@@ -335,10 +335,13 @@ class nGCNN(torch.nn.Module):
         torch.manual_seed(12345)
 
         # Define graph convolution layers
-        self.conv1 = GraphConv(n_node_features+n_graph_features, 128)  # Introducing node features
-        self.conv2 = GraphConv(128, 256)  # Convolutional layer
-        self.conv3 = GraphConv(256, n_node_features)  # Predicting node features
+        # Introducing graph features
+        self.conv1 = GraphConv(n_node_features+n_graph_features, 128)
+        self.conv2 = GraphConv(128, 256)
+        self.conv3 = GraphConv(256, 256)
+        self.conv4 = GraphConv(256, n_node_features)  # Predict all node features at once
 
+        # Normalization helps model stability
         self.norm1 = torch.nn.BatchNorm1d(256)
 
         self.pdropout = pdropout
@@ -348,9 +351,11 @@ class nGCNN(torch.nn.Module):
         x = self.conv1(x, edge_index, edge_attr)
         x = x.relu()
         x = self.conv2(x, edge_index, edge_attr)
-        x = self.norm1(x)
         x = x.relu()
         x = self.conv3(x, edge_index, edge_attr)
+        x = self.norm1(x)  # Batch normalization
+        x = x.relu()
+        x = self.conv4(x, edge_index, edge_attr)
         return x
 
 
@@ -367,10 +372,16 @@ class eGCNN(nn.Module):
         # Set random seed for reproducibility
         torch.manual_seed(12345)
 
-        self.linear1 = Linear(n_node_features+n_graph_features+1, 128)  # Introducing node features + previous edge attribute
-        self.linear2 = Linear(128, 64)  # Convolutional layer
-        self.linear3 = Linear(64, 1)  # Predicting one single weight
+        # Define linear convolution layers
+        # Introducing node features + previous edge attribute
+        self.linear1 = Linear(n_node_features+n_graph_features+1, 128)
+        self.linear2 = Linear(128, 128)
+        self.linear3 = Linear(128, 64)
+        self.linear4 = Linear(64, 1)  # Predicting one single weight
 
+        # Normalization helps model stability
+        self.norm1 = torch.nn.BatchNorm1d(128)
+        
         self.pdropout = pdropout
 
     def forward(self, x_i, x_j, previous_attr):
@@ -391,8 +402,11 @@ class eGCNN(nn.Module):
 
         # Last linear convolution
         x = self.linear2(x)
+        x = self.norm1(x)  # Batch normalization
         x = x.relu()
         x = self.linear3(x)
+        x = x.relu()
+        x = self.linear4(x)
         return x
 
 
