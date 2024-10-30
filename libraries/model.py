@@ -336,10 +336,11 @@ class nGCNN(torch.nn.Module):
 
         # Define graph convolution layers
         # Introducing graph features
-        self.conv1 = GraphConv(n_node_features+n_graph_features, 128)
-        self.conv2 = GraphConv(128, 256)
-        self.conv3 = GraphConv(256, 256)
-        self.conv4 = GraphConv(256, n_node_features)  # Predict all node features at once
+        self.conv1 = GraphConv(n_node_features+n_graph_features, 256)
+        self.conv2 = GraphConv(256, 512)
+        self.conv3 = GraphConv(512, 256)
+        self.conv4 = GraphConv(256, 256)
+        self.conv5 = GraphConv(256, n_node_features)  # Predict all node features at once
 
         # Normalization helps model stability
         self.norm1 = torch.nn.BatchNorm1d(256)
@@ -356,6 +357,8 @@ class nGCNN(torch.nn.Module):
         x = self.norm1(x)  # Batch normalization
         x = x.relu()
         x = self.conv4(x, edge_index, edge_attr)
+        x = x.relu()
+        x = self.conv5(x, edge_index, edge_attr)
         return x
 
 
@@ -375,9 +378,10 @@ class eGCNN(nn.Module):
         # Define linear convolution layers
         # Introducing node features + previous edge attribute
         self.linear1 = Linear(n_node_features+n_graph_features+1, 128)
-        self.linear2 = Linear(128, 128)
-        self.linear3 = Linear(128, 64)
-        self.linear4 = Linear(64, 1)  # Predicting one single weight
+        self.linear2 = Linear(128, 256)
+        self.linear3 = Linear(256, 128)
+        self.linear4 = Linear(128, 64)
+        self.linear5 = Linear(64, 1)  # Predicting one single weight
 
         # Normalization helps model stability
         self.norm1 = torch.nn.BatchNorm1d(128)
@@ -402,11 +406,13 @@ class eGCNN(nn.Module):
 
         # Last linear convolution
         x = self.linear2(x)
-        x = self.norm1(x)  # Batch normalization
         x = x.relu()
         x = self.linear3(x)
+        x = self.norm1(x)  # Batch normalization
         x = x.relu()
         x = self.linear4(x)
+        x = x.relu()
+        x = self.linear5(x)
         return x
 
 
