@@ -1,4 +1,4 @@
-# Graph equivariant diffusion models: the crystal material generation testcase
+# GraphGen: from de novo drug discovery to crystal material generation
 
 This project introduces a novel framework for generating new crystal materials using equivariant diffusion models based on a graph-like representation of data. This offers a powerful approach to surpass previous implementations, as it considers interactions and similarities between close points (which are more likely to interact). As well, aligned with previous implementations, ours also allows maximizing arbitrary targets such as conductivity, absorption, and more, or looking for materials with specific properties (such as diffraction patterns or n-order transitions). The generated crystals demonstrate remarkable thermodynamic stability (convex-hull approach), compared against the Materials Project database. 
 
