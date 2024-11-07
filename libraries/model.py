@@ -299,8 +299,7 @@ class nGCNN(torch.nn.Module):
         self.conv1 = GraphConv(n_node_features+n_graph_features, 256)
         self.conv2 = GraphConv(256, 512)
         self.conv3 = GraphConv(512, 256)
-        self.conv4 = GraphConv(256, 256)
-        self.conv5 = GraphConv(256, n_node_features)  # Predict all node features at once
+        self.conv4 = GraphConv(256, n_node_features)  # Predict all node features at once
 
         # Normalization helps model stability
         self.norm1 = torch.nn.BatchNorm1d(256)
@@ -317,8 +316,6 @@ class nGCNN(torch.nn.Module):
         x = self.norm1(x)  # Batch normalization
         x = x.relu()
         x = self.conv4(x, edge_index, edge_attr)
-        x = x.relu()
-        x = self.conv5(x, edge_index, edge_attr)
         return x
 
 
@@ -339,12 +336,11 @@ class eGCNN(nn.Module):
         # Introducing node features + previous edge attribute
         self.linear1 = Linear(n_node_features+n_graph_features+1, 128)
         self.linear2 = Linear(128, 256)
-        self.linear3 = Linear(256, 128)
-        self.linear4 = Linear(128, 64)
-        self.linear5 = Linear(64, 1)  # Predicting one single weight
+        self.linear3 = Linear(256, 64)
+        self.linear4 = Linear(64, 1)  # Predicting one single weight
 
         # Normalization helps model stability
-        self.norm1 = torch.nn.BatchNorm1d(128)
+        self.norm1 = torch.nn.BatchNorm1d(64)
         
         self.pdropout = pdropout
 
@@ -371,8 +367,6 @@ class eGCNN(nn.Module):
         x = self.norm1(x)  # Batch normalization
         x = x.relu()
         x = self.linear4(x)
-        x = x.relu()
-        x = self.linear5(x)
         return x
 
 
@@ -534,11 +528,12 @@ class EarlyStopping():
 
     def save_checkpoint(self, val_loss, model):
         """Save the model checkpoint if the validation loss has decreased.
+        It uses model.module, allowing models loaded to nn.DataParallel.
 
         Args:
             val_loss (float):           Current validation loss.
             model    (torch.nn.Module): The PyTorch model being trained.
         """
         if val_loss < self.val_loss_min:
-            torch.save(model.state_dict(), self.model_name)
+            torch.save(model.module.state_dict(), self.model_name)
             self.val_loss_min = val_loss
