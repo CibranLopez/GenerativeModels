@@ -118,14 +118,15 @@ def diffusion_step(batch_0, alpha_t, n_features=None):
     return batch_t, epsilon_t
 
 
-def diffuse(batch_0, n_diffusing_steps, alpha_decay=1e-2, plot_steps=False, ouput_all_graphs=False):
+def diffuse(batch_0, n_diffusing_steps, alpha_decay=1e-2, plot_steps=False, ouput_all_graphs=False, n_features=None):
     """Performs consecutive steps of diffusion in a reference batch of graphs.
 
     Args:
-        batch_0           (torch_geometric.data.Data): Reference batch of graphs to be diffused (step t-1).
-        n_diffusing_steps (int):                       Number of diffusive steps.
-        alpha_decay       (float):                     Parameter which controls the decay of alpha with t.
-        plot_steps        (bool):                      Whether to plot or not each intermediate step.
+        batch_0           (Batch): Reference batch of graphs to be diffused (step t-1).
+        n_diffusing_steps (int):   Number of diffusive steps.
+        alpha_decay       (float): Parameter which controls the decay of alpha with t.
+        plot_steps        (bool):  Whether to plot or not each intermediate step.
+        n_features        (int):   Number of node features to be diffused (:n_features).
 
     Returns:
         graph_t (torch_geometric.data.Data): Graph with random node features and edge attributes (step t).
@@ -154,7 +155,7 @@ def diffuse(batch_0, n_diffusing_steps, alpha_decay=1e-2, plot_steps=False, oupu
 
         # Compute alpha_t and diffuse batch altogether
         alpha_t = get_alpha_t(t, n_diffusing_steps, alpha_decay)
-        batch_t, _ = diffusion_step(batch_t, alpha_t)
+        batch_t, _ = diffusion_step(batch_t, alpha_t, n_features)
         
         if ouput_all_graphs:
             all_graphs.append(batch_t)
@@ -203,45 +204,48 @@ def predict_noise(batch_t, node_model, edge_model):
     return batch_0
 
 
-def denoising_step(batch_t, epsilon, alpha_t, sigma):
+def denoising_step(batch_t, epsilon, alpha_t, sigma, n_features=None):
     """Performs a forward step of a denoising chain.
 
     Args:
-        batch_t (Batch):                     Batch of graphs to be diffused.
-        epsilon (torch_geometric.data.Data): Predicted noise to subtract.
-        alpha_t (float):                     Constant from the step of the diffusion process.
-        sigma   (float):                     Parameter which controls the amount of noised added when generating.
+        batch_t    (Batch): Batch of graphs to be diffused.
+        epsilon    (Batch): Predicted noise to subtract.
+        alpha_t    (float): Constant from the step of the diffusion process.
+        sigma      (float): Parameter which controls the amount of noised added when generating.
+        n_features (int):   Number of node features to be diffused (:n_features).
 
     Returns:
         graph_0 (torch_geometric.data.Data): Denoised graph (step t-1).
     """
 
-    # Clone graph that we are denoising (not strictly necessary)
+    # Clone the original batch of graphs to prevent in-place modifications
     batch_0 = batch_t.clone()
 
-    # Number of nodes and features in the graph
-    n_nodes, n_features = torch.Tensor.size(batch_0.x)
+    # Number of nodes and features per graph
+    n_nodes    = batch_t.x.size(0)
+    n_features = n_features if n_features is not None else batch_t.x.size(1)
     
     # Generate gaussian (normal) noise
     epsilon_t = get_random_graph(n_nodes, n_features, batch_0.edge_index)
     
     # Backward pass
-    batch_0.x         = batch_0.x         / torch.sqrt(alpha_t) - torch.sqrt((1 - alpha_t) / alpha_t) * epsilon.x         + sigma * epsilon_t.x
-    batch_0.edge_attr = batch_0.edge_attr / torch.sqrt(alpha_t) - torch.sqrt((1 - alpha_t) / alpha_t) * epsilon.edge_attr + sigma * epsilon_t.edge_attr
+    batch_0.x[:, :n_features] = batch_0.x[:, :n_features] / torch.sqrt(alpha_t) - torch.sqrt((1 - alpha_t) / alpha_t) * epsilon.x         + sigma * epsilon_t.x
+    batch_0.edge_attr         = batch_0.edge_attr         / torch.sqrt(alpha_t) - torch.sqrt((1 - alpha_t) / alpha_t) * epsilon.edge_attr + sigma * epsilon_t.edge_attr
     return batch_0
 
 
-def denoise(batch_t, n_t_steps, node_model, edge_model, alpha_decay=1e-2, sigma=None, plot_steps=False):
+def denoise(batch_t, n_t_steps, node_model, edge_model, alpha_decay=1e-2, sigma=None, plot_steps=False, n_features=None):
     """Performs consecutive steps of diffusion in a reference batch of graphs.
 
     Args:
-        batch_t     (torch_geometric.data.Data): Reference batch of graphs to be denoised (step t-1).
-        n_t_steps   (int):                       Number of diffusive steps.
-        node_model  (torch.nn.Module):           Model for graph-node prediction.
-        edge_model  (torch.nn.Module):           Model for graph-edge prediction.
-        alpha_decay (float):                     Parameter which controls the decay of alpha with t.
-        sigma       (float):                     Parameter which controls the amount of noised added when generating.
-        plot_steps  (bool, int):                 Whether to plot each intermediate step, or which graph from batch.
+        batch_t     (Batch):           Reference batch of graphs to be denoised (step t-1).
+        n_t_steps   (int):             Number of diffusive steps.
+        node_model  (torch.nn.Module): Model for graph-node prediction.
+        edge_model  (torch.nn.Module): Model for graph-edge prediction.
+        alpha_decay (float):           Parameter which controls the decay of alpha with t.
+        sigma       (float):           Parameter which controls the amount of noised added when generating.
+        plot_steps  (bool, int):       Whether to plot each intermediate step, or which graph from batch.
+        n_features  (int):             Number of node features to be diffused (:n_features).
 
     Returns:
         graph_0 (torch_geometric.data.Data): Graph with random node features and edge attributes (step t).
@@ -270,7 +274,7 @@ def denoise(batch_t, n_t_steps, node_model, edge_model, alpha_decay=1e-2, sigma=
 
         # Compute alpha_t and denoise batch altogether
         alpha_t = get_alpha_t(t_step, n_t_steps, alpha_decay)
-        batch_0 = denoising_step(batch_0, pred_epsilon_t, alpha_t, sigma)
+        batch_0 = denoising_step(batch_0, pred_epsilon_t, alpha_t, sigma, n_features=n_features)
         
     # Check if intermediate steps are plotted; then, plot the NetworkX graph
     if plot_steps:
