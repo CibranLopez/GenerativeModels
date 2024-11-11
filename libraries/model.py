@@ -263,7 +263,6 @@ def denoise(batch_t, n_t_steps, node_model, edge_model, alpha_decay=1e-2, sigma=
 
         # Predict batch noise at given time step
         pred_epsilon_t = predict_noise(batch_0, node_model, edge_model)
-        print(pred_epsilon_t.x)
 
         # Check if intermediate steps are plotted; then, plot the NetworkX graph
         if plot_steps:
