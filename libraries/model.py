@@ -118,15 +118,15 @@ def diffusion_step(batch_0, alpha_t, n_features=None):
     return batch_t, epsilon_t
 
 
-def diffuse(batch_0, n_diffusing_steps, alpha_decay=1e-2, plot_steps=False, ouput_all_graphs=False, n_features=None):
+def diffuse(batch_0, n_t_steps, alpha_decay=1e-2, plot_steps=False, ouput_all_graphs=False, n_features=None):
     """Performs consecutive steps of diffusion in a reference batch of graphs.
 
     Args:
-        batch_0           (Batch): Reference batch of graphs to be diffused (step t-1).
-        n_diffusing_steps (int):   Number of diffusive steps.
-        alpha_decay       (float): Parameter which controls the decay of alpha with t.
-        plot_steps        (bool):  Whether to plot or not each intermediate step.
-        n_features        (int):   Number of node features to be diffused (:n_features).
+        batch_0     (Batch): Reference batch of graphs to be diffused (step t-1).
+        n_t_steps   (int):   Number of diffusive steps.
+        alpha_decay (float): Parameter which controls the decay of alpha with t.
+        plot_steps  (bool):  Whether to plot or not each intermediate step.
+        n_features  (int):   Number of node features to be diffused (:n_features).
 
     Returns:
         graph_t (torch_geometric.data.Data): Graph with random node features and edge attributes (step t).
@@ -140,11 +140,7 @@ def diffuse(batch_0, n_diffusing_steps, alpha_decay=1e-2, plot_steps=False, oupu
         all_graphs = []
     
     # Define t_steps starting from 1 to n_t_steps+1
-    t_steps = np.arange(1, n_diffusing_steps+1)
-    for t in t_steps:
-        # Diffuse the denoised graph
-        # print(f'Diffusing...')
-
+    for t_step in torch.arange(n_t_steps, device=device):
         # Check if intermediate steps are plotted; then, plot the NetworkX graph
         if plot_steps:
             # Convert PyTorch graph to NetworkX graph
@@ -154,7 +150,7 @@ def diffuse(batch_0, n_diffusing_steps, alpha_decay=1e-2, plot_steps=False, oupu
             plt.show()
 
         # Compute alpha_t and diffuse batch altogether
-        alpha_t = get_alpha_t(t, n_diffusing_steps, alpha_decay)
+        alpha_t = get_alpha_t(t_step, n_t_steps, alpha_decay)
         batch_t, _ = diffusion_step(batch_t, alpha_t, n_features)
         
         if ouput_all_graphs:
