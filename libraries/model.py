@@ -259,7 +259,10 @@ def denoise(batch_t, n_t_steps, node_model, edge_model, alpha_decay=1e-2, sigma=
 
         # Predict batch noise at given time step
         pred_epsilon_t = predict_noise(batch_0, node_model, edge_model)
-
+        print()
+        print('Step: ', t_step)
+        print(pred_epsilon_t.x[:5])
+        
         # Check if intermediate steps are plotted; then, plot the NetworkX graph
         if plot_steps:
             # Convert PyTorch graph to NetworkX graph
@@ -271,6 +274,7 @@ def denoise(batch_t, n_t_steps, node_model, edge_model, alpha_decay=1e-2, sigma=
         # Compute alpha_t and denoise batch altogether
         alpha_t = get_alpha_t(t_step, n_t_steps, alpha_decay)
         batch_0 = denoising_step(batch_0, pred_epsilon_t, alpha_t, sigma, n_features=n_features)
+        print(batch_0.x[:5])
         
     # Check if intermediate steps are plotted; then, plot the NetworkX graph
     if plot_steps:
