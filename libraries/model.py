@@ -259,9 +259,6 @@ def denoise(batch_t, n_t_steps, node_model, edge_model, alpha_decay=1e-2, sigma=
 
         # Predict batch noise at given time step
         pred_epsilon_t = predict_noise(batch_0, node_model, edge_model)
-        print()
-        print('Step: ', t_step)
-        print(pred_epsilon_t.x[:5])
         
         # Check if intermediate steps are plotted; then, plot the NetworkX graph
         if plot_steps:
@@ -274,7 +271,20 @@ def denoise(batch_t, n_t_steps, node_model, edge_model, alpha_decay=1e-2, sigma=
         # Compute alpha_t and denoise batch altogether
         alpha_t = get_alpha_t(t_step, n_t_steps, alpha_decay)
         batch_0 = denoising_step(batch_0, pred_epsilon_t, alpha_t, sigma, n_features=n_features)
-        print(batch_0.x[:5])
+        
+        #print()
+        #print('Step: ', t_step)
+        #print('Alpha: ', alpha_t, 1/torch.sqrt(alpha_t), torch.sqrt((1 - alpha_t) / alpha_t))
+        #print(get_random_graph(batch_0.x.size(0), n_features if n_features is not None else batch_0.x.size(1), batch_0.edge_index).x[:5])
+        #print('Pred epsilon: ', pred_epsilon_t.x[:5])
+        #print('Resulting batch: ', batch_0.x[:5])
+
+        #print()
+        #print('Step: ', t_step)
+        #print('Alpha: ', alpha_t, 1/torch.sqrt(alpha_t), torch.sqrt((1 - alpha_t) / alpha_t))
+        #print(get_random_graph(batch_0.x.size(0), n_features if n_features is not None else batch_0.x.size(1), batch_0.edge_index).edge_attr[:5])
+        #print('Pred epsilon: ', pred_epsilon_t.edge_attr[:5])
+        #print('Resulting batch: ', batch_0.edge_attr[:5])
         
     # Check if intermediate steps are plotted; then, plot the NetworkX graph
     if plot_steps:
@@ -302,11 +312,12 @@ class nGCNN(torch.nn.Module):
         # Introducing graph features
         self.conv1 = GraphConv(n_node_features+n_graph_features, 256)
         self.conv2 = GraphConv(256, 512)
-        self.conv3 = GraphConv(512, 256)
-        self.conv4 = GraphConv(256, n_node_features)  # Predict all node features at once
+        self.conv3 = GraphConv(512, 512)
+        self.conv4 = GraphConv(512, 256)
+        self.conv5 = GraphConv(256, n_node_features)  # Predict all node features at once
 
         # Normalization helps model stability
-        self.norm1 = torch.nn.BatchNorm1d(256)
+        self.norm1 = torch.nn.BatchNorm1d(512)
 
         self.pdropout = pdropout
 
@@ -320,6 +331,8 @@ class nGCNN(torch.nn.Module):
         x = self.norm1(x)  # Batch normalization
         x = x.relu()
         x = self.conv4(x, edge_index, edge_attr)
+        x = x.relu()
+        x = self.conv5(x, edge_index, edge_attr)
         return x
 
 
@@ -340,11 +353,12 @@ class eGCNN(nn.Module):
         # Introducing node features + previous edge attribute
         self.linear1 = Linear(n_node_features+n_graph_features+1, 128)
         self.linear2 = Linear(128, 256)
-        self.linear3 = Linear(256, 64)
-        self.linear4 = Linear(64, 1)  # Predicting one single weight
+        self.linear3 = Linear(256, 256)
+        self.linear4 = Linear(256, 64)
+        self.linear5 = Linear(64, 1)  # Predicting one single weight
 
         # Normalization helps model stability
-        self.norm1 = torch.nn.BatchNorm1d(64)
+        self.norm1 = torch.nn.BatchNorm1d(256)
         
         self.pdropout = pdropout
 
@@ -371,6 +385,8 @@ class eGCNN(nn.Module):
         x = self.norm1(x)  # Batch normalization
         x = x.relu()
         x = self.linear4(x)
+        x = x.relu()
+        x = self.linear5(x)
         return x
 
 
