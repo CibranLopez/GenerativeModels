@@ -390,7 +390,7 @@ class eGCNN(nn.Module):
 
     def forward(self, x_i, x_j, previous_attr):
         # Dot product between node distances
-        x_i[:, :-1] = torch.pow(x_i[:, :-1] - x_j[:, :-1], 2)  # Of dimension [..., features_channels]
+        x_i = torch.cat((torch.pow(x_i[:, :-1] - x_j[:, :-1], 2), x_i[:, -1:]), dim=1)  # Of dimension [..., features_channels]
         
         # Reshape previous_attr tensor to have the same number of dimensions as x
         previous_attr = previous_attr.view(-1, 1)  # Reshapes from [...] to [..., 1]
