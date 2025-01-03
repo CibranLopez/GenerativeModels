@@ -20,6 +20,8 @@ def get_alpha_t(t_step, n_t_steps, alpha_decay):
     
     \\alpha (t) = (1 - 2 s) \\left( 1 - \\left( \\frac{t}{T} \\right)^2 \\right) + s
 
+    where alpha_-1 = 1.
+
     Args:
         t_step      (int):   time step (of diffusion or denoising) in which alpha is required.
         n_t_steps   (int):   total number of steps.
@@ -28,7 +30,9 @@ def get_alpha_t(t_step, n_t_steps, alpha_decay):
     Returns:
         alpha (float): parameter which controls how much signal is retained.
     """
-
+    
+    if t_step < 0:
+        return torch.tensor(1, dtype=torch.int, device=device)
     return (1 - 2 * alpha_decay) * (1 - (t_step / n_t_steps)**2) + alpha_decay
 
 
@@ -266,6 +270,11 @@ def denoising_step(batch_t, epsilon_t, t_step, n_t_steps, alpha_decay, n_feature
     sigma_t_to_s = get_sigma_t_to_s(t_step, t_step-1, n_t_steps, alpha_decay)
 
     aux = sigma_t_s**2 / (alpha_t_s * sigma_t)
+    
+    sigma_s = get_sigma_t(t_step-1, n_t_steps, alpha_decay)
+    alpha_t = get_alpha_t(t_step, n_t_steps, alpha_decay)
+    alpha_s = get_alpha_t(t_step-1, n_t_steps, alpha_decay)
+    #print('alpha_t', alpha_t, 'alpha_s', alpha_s, 'alpha_t_s', alpha_t_s, 'sigma_t', sigma_t, 'sigma_s', sigma_s, 'sigma_t_s', sigma_t_s, 'sigma_t_to_s', sigma_t_to_s, 'aux', aux)
 
     # Backward pass
     batch_s.x[:, :n_features] = batch_s.x[:, :n_features] / alpha_t_s - aux * epsilon_t.x         + sigma_t_to_s * epsilon.x
@@ -292,7 +301,7 @@ def denoise(batch_t, n_t_steps, alpha_decay, node_model, edge_model, plot_steps=
     # Clone batch of graphs and move to device
     batch_s = batch_t.clone().to(device)
 
-    for t_step in torch.arange(n_t_steps, device=device):
+    for t_step in torch.arange(n_t_steps-1, -1, -1, device=device):
         # Standard normalization for the time step, which is added to node-level graph embeddings after
         t_step_std = t_step / n_t_steps - 0.5
 
@@ -315,6 +324,7 @@ def denoise(batch_t, n_t_steps, alpha_decay, node_model, edge_model, plot_steps=
         batch_s = denoising_step(batch_s, pred_epsilon_t,
                                  t_step, n_t_steps, alpha_decay,
                                  n_features=n_features)
+        #print(batch_s.x[:2])
         
     # Check if intermediate steps are plotted; then, plot the NetworkX graph
     if plot_steps:
