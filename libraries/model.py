@@ -703,8 +703,8 @@ class DenoisingModel():
                         self.ground_truth[key].append(gt_value)
                         self.prediction[key].append(pred_value)
 
-        node_loss_cum /= (self.n_eras * len(self.train_data))
-        edge_loss_cum /= (self.n_eras * len(self.train_data))  
+        node_loss_cum /= (self.n_eras * len(train_data))
+        edge_loss_cum /= (self.n_eras * len(train_data))  
        
         return node_loss_cum, edge_loss_cum
 
