@@ -684,11 +684,16 @@ class DenoisingModel():
                 g_batch_t.x[:, -1] = t_step_std
            
                 pred_epsilon_t = predict_noise(g_batch_t, self.node_model, self.edge_model)
-                node_loss, edge_loss = self.compute_losses(e_batch_t, pred_epsilon_t)
 
-                node_loss_cum += np.array([node_loss.item()])
+                # Calculate the losses for node features and edge attributes
+                node_losses, edge_loss = get_graph_losses(e_batch_t, pred_epsilon_t)
+                
+                # Combine losses for each attribute tensors
+                node_loss = torch.stack(node_losses).sum()
+
+                node_loss_cum += np.array([loss.item() for loss in node_losses])
                 edge_loss_cum += edge_loss.item()
-
+                
                 self.optimize(node_loss, node_optimizer, self.node_model, max_norm=2.0, early_stopping=node_early_stopping)
                 self.optimize(edge_loss, edge_optimizer, self.edge_model, max_norm=2.0, early_stopping=edge_early_stopping)
 
@@ -813,7 +818,7 @@ class DenoisingModel():
             """
 
             print_node_loss = ' '.join([f'{node_loss:.4f}' for node_loss in node_train_loss])
-            print(f'Epoch: {epoch+1}, edge loss: {edge_train_loss:.4f}, node loss: {print_node_loss}, time elapsed: {time.time()-start:.2f}')
+            print(f'Epoch: {epoch+1}, edge loss: {edge_train_loss:.4f}, node loss: {print_node_loss}. Time elapsed: {time.time()-start:.2f} seconds')
 
             # Perform validation
             node_val_loss, edge_val_loss = self.eval(val_data)
@@ -843,6 +848,9 @@ class DenoisingModel():
         edge_val_loss : float
             Edge validation loss
         """
+        # Initialize losses
+        edge_test_losses = 0
+        node_test_losses = np.zeros(self.n_node_features, dtype=float)
 
         # Initialize the models in evaluation mode
         self.node_model.eval()
