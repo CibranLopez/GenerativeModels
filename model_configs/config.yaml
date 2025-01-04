@@ -1,0 +1,15 @@
+n_eras: 1
+n_epochs: 100
+learning_rate: 0.0001
+patience: 100
+delta: 0.2
+n_t_steps: 1000
+alpha_decay: 0.0001
+dropout_node: 0.1
+dropout_edge: 0.1
+node_attributes:
+  - 'edge_attr'
+  - 'atomic_mass'
+  - 'charge'
+  - 'electronegativity'
+  - 'ionization_energy'
