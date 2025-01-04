@@ -813,7 +813,7 @@ class DenoisingModel():
             """
 
             print_node_loss = ' '.join([f'{node_loss:.4f}' for node_loss in node_train_loss])
-            print(f'Epoch: {epoch+1}, edge loss: {self.edge_loss_cum:.4f}, node loss: {print_node_loss}, time elapsed: {time.time()-start:.2f}')
+            print(f'Epoch: {epoch+1}, edge loss: {edge_train_loss:.4f}, node loss: {print_node_loss}, time elapsed: {time.time()-start:.2f}')
 
             # Perform validation
             node_val_loss, edge_val_loss = self.eval(val_data)
