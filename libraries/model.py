@@ -811,8 +811,8 @@ class DenoisingModel():
                 print('Early stopping')
                 break
             """
-            
-            print_node_loss = ' '.join([f'{node_loss:.4f}' for node_loss in self.node_loss_cum])
+
+            print_node_loss = ' '.join([f'{node_loss:.4f}' for node_loss in node_train_loss])
             print(f'Epoch: {epoch+1}, edge loss: {self.edge_loss_cum:.4f}, node loss: {print_node_loss}, time elapsed: {time.time()-start:.2f}')
 
             # Perform validation
@@ -856,7 +856,7 @@ class DenoisingModel():
                 g_batch_0 = batch_0.clone()
 
                 # Apply full diffusion. For validation, we are interested in knowing if the model can denoise from the beginning.
-                g_batch_t, e_batch_t = diffuse_t_steps(g_batch_0, self.n_t_steps, self.n_t_steps, self.alpha_decay, n_features=self.n_node_features )
+                g_batch_t, e_batch_t = diffuse_t_steps(g_batch_0, self.n_t_steps, self.n_t_steps, self.alpha_decay, n_features=self.n_node_features)
                 
                 # Denoise batch 
                 g_batch_0 = denoise(g_batch_t,
@@ -877,6 +877,12 @@ class DenoisingModel():
                 
                 print_node_loss = ' '.join([f'{node_loss:.4f}' for node_loss in node_loss_cum])
                 print(f'Batch: {batch_idx}, edge loss: {edge_loss_cum:.4f}, node loss: {print_node_loss}')
+
+        # Compute the average test loss over n_t_steps
+        node_test_losses /= (self.n_t_steps * len(val_data))
+        edge_test_losses /= (self.n_t_steps * len(val_data))
+
+        return node_test_losses, edge_test_losses
 
 
 
