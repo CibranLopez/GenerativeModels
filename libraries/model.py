@@ -803,13 +803,15 @@ class DenoisingModel():
             edge_train_losses.append(edge_train_loss)
 
             # Check early stopping criteria
-            node_early_stopping(self.node_loss_cum.sum(), self.node_model)
-            edge_early_stopping(self.edge_loss_cum, self. edge_model) #TODO: check if .sum() is required
+            """
+            node_early_stopping(node_train_loss.sum(), self.node_model)  #TODO: check if .sum() is required
+            edge_early_stopping(edge_train_loss, self. edge_model)
 
             if node_early_stopping.early_stop and edge_early_stopping.early_stop:
                 print('Early stopping')
                 break
-
+            """
+            
             print_node_loss = ' '.join([f'{node_loss:.4f}' for node_loss in self.node_loss_cum])
             print(f'Epoch: {epoch+1}, edge loss: {self.edge_loss_cum:.4f}, node loss: {print_node_loss}, time elapsed: {time.time()-start:.2f}')
 
