@@ -850,7 +850,7 @@ class DenoisingModel():
 
         # Perform validation
         with torch.no_grad():
-            for batch_idx, batch_s in enumerate(val_data):
+            for batch_idx, batch_0 in enumerate(val_data):
                 # Clone batch and move to device
                 batch_0 = batch_0.to(device)
                 g_batch_0 = batch_0.clone()
