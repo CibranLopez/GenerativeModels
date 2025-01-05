@@ -4,6 +4,7 @@ import torch.nn.functional as F
 import torch.nn            as nn
 import networkx            as nx
 import os 
+import pandas as pd
 import time
 import torch
 import sys
@@ -96,7 +97,6 @@ def get_sigma_t_s(t, s, n_t_steps, alpha_decay):
     alpha_t_s = get_alpha_t_s(t, s, n_t_steps, alpha_decay)
     sigma_t   = get_sigma_t(t, n_t_steps, alpha_decay)
     sigma_s   = get_sigma_t(s, n_t_steps, alpha_decay)
-
     return torch.sqrt(sigma_t**2 - alpha_t_s**2 * sigma_s**2)
 
 
@@ -225,9 +225,11 @@ def predict_noise(batch_t, node_model, edge_model):
     """
 
     batch_0 = batch_t.clone()
-
+    
     # Perform a single forward pass for predicting node features
     out_x = node_model(batch_t.x, batch_t.edge_index, batch_t.edge_attr)
+    if torch.isnan(out_x).any():
+        raise ValueError("Tensor out_x contains NaN values.")
 
     # Define x_i and x_j as features of every corresponding pair of nodes (same order than attributes)
     x_i = batch_t.x[batch_t.edge_index[0]]
@@ -236,6 +238,8 @@ def predict_noise(batch_t, node_model, edge_model):
     # Perform a single forward pass for predicting edge attributes
     # Introduce previous edge attributes as features as well
     out_attr = edge_model(x_i, x_j, batch_t.edge_attr).ravel()
+    if torch.isnan(out_attr).any():
+        raise ValueError("Tensor out_x contains NaN values.")
 
     # Update node features and edge attributes in g_batch_0 with the predicted out_x and out_attr
     batch_0.x         = out_x
@@ -267,10 +271,10 @@ def denoising_step(batch_t, epsilon_t, t_step, n_t_steps, alpha_decay, n_feature
     # Generate gaussian (normal) noise
     epsilon = get_random_graph(n_nodes, n_features, batch_s.edge_index)
 
-    alpha_t_s    = get_alpha_t_s(t_step, t_step-1, n_t_steps, alpha_decay)
+    alpha_t_s    = get_alpha_t_s(t_step, t_step-1, n_t_steps, alpha_decay) #
     sigma_t      = get_sigma_t(t_step, n_t_steps, alpha_decay)
     sigma_t_s    = get_sigma_t_s(t_step, t_step-1, n_t_steps, alpha_decay)
-    sigma_t_to_s = get_sigma_t_to_s(t_step, t_step-1, n_t_steps, alpha_decay)
+    sigma_t_to_s = get_sigma_t_to_s(t_step, t_step-1, n_t_steps, alpha_decay) #
 
     aux = sigma_t_s**2 / (alpha_t_s * sigma_t)
     
@@ -280,8 +284,11 @@ def denoising_step(batch_t, epsilon_t, t_step, n_t_steps, alpha_decay, n_feature
     #print('alpha_t', alpha_t, 'alpha_s', alpha_s, 'alpha_t_s', alpha_t_s, 'sigma_t', sigma_t, 'sigma_s', sigma_s, 'sigma_t_s', sigma_t_s, 'sigma_t_to_s', sigma_t_to_s, 'aux', aux)
 
     # Backward pass
+
     batch_s.x[:, :n_features] = batch_s.x[:, :n_features] / alpha_t_s - aux * epsilon_t.x         + sigma_t_to_s * epsilon.x
     batch_s.edge_attr         = batch_s.edge_attr         / alpha_t_s - aux * epsilon_t.edge_attr + sigma_t_to_s * epsilon.edge_attr
+
+    
     return batch_s
 
 
@@ -315,6 +322,7 @@ def denoise(batch_t, n_t_steps, alpha_decay, node_model, edge_model, plot_steps=
         pred_epsilon_t = predict_noise(batch_s,
                                        node_model, edge_model)
         
+        
         # Check if intermediate steps are plotted; then, plot the NetworkX graph
         if plot_steps:
             # Convert PyTorch graph to NetworkX graph
@@ -327,8 +335,8 @@ def denoise(batch_t, n_t_steps, alpha_decay, node_model, edge_model, plot_steps=
         batch_s = denoising_step(batch_s, pred_epsilon_t,
                                  t_step, n_t_steps, alpha_decay,
                                  n_features=n_features)
-        #print(batch_s.x[:2])
-        
+       
+
     # Check if intermediate steps are plotted; then, plot the NetworkX graph
     if plot_steps:
         # Convert PyTorch graph to NetworkX graph
@@ -357,7 +365,7 @@ class nGCNN(torch.nn.Module):
         self.conv4 = GraphConv(256, n_node_features)  # Predict all node features at once
 
         # Normalization helps model stability
-        self.norm1 = torch.nn.BatchNorm1d(256)
+        self.norm1 = torch.nn.BatchNorm1d(256, track_running_stats=False)
 
         self.pdropout = pdropout
 
@@ -368,7 +376,11 @@ class nGCNN(torch.nn.Module):
         x = self.conv2(x, edge_index, edge_attr)
         x = x.relu()
         x = self.conv3(x, edge_index, edge_attr)
+        if torch.isnan(x).any():
+            raise ValueError(" In node it was nan before the norm. Tensor contains NaN values.")
         x = self.norm1(x)  # Batch normalization
+        if torch.isnan(x).any():
+            raise ValueError(" In node it was nan after the norm. Tensor contains NaN values.")
         x = x.relu()
         x = self.conv4(x, edge_index, edge_attr)
         return x
@@ -393,7 +405,7 @@ class eGCNN(nn.Module):
         self.linear4 = Linear(64, 1)  # Predicting one single weight
 
         # Normalization helps model stability
-        self.norm1 = torch.nn.BatchNorm1d(64)
+        self.norm1 = torch.nn.BatchNorm1d(64, track_running_stats=False)
         
         self.pdropout = pdropout
 
@@ -417,7 +429,11 @@ class eGCNN(nn.Module):
         x = self.linear2(x)
         x = x.relu()
         x = self.linear3(x)
+        if torch.isnan(x).any():
+            raise ValueError(" In edge it was nan before the norm. Tensor contains NaN values.")
         x = self.norm1(x)  # Batch normalization
+        if torch.isnan(x).any():
+            raise ValueError(" In edge it was nan after the norm. Tensor contains NaN values.")
         x = x.relu()
         x = self.linear4(x)
         return x
@@ -648,18 +664,161 @@ class DenoisingModel():
 
         self.node_model = node_model
         self.edge_model = edge_model
-   
-    def compute_losses(self, e_batch_t, pred_epsilon_t):
-        """Compute node and edge losses."""
-        node_losses, edge_loss = get_graph_losses(e_batch_t, pred_epsilon_t)
-        return torch.stack(node_losses).sum(), edge_loss
 
-    def optimize(self, loss, optimizer, model, max_norm, early_stopping):
-        """Optimize a given loss."""
-        if not early_stopping.early_stop:
-            loss.backward(retain_graph=True)
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=max_norm)
-            optimizer.step()
+    def train(self, train_data, val_data, exp_name, val_jump=5):
+        """
+        Train the denoising model using the provided data
+
+        Parameters
+        ----------
+        train_data : torch_geometric.DataLoader
+            DataLoader object with the training data
+        val_data : torch_geometric.DataLoader
+            DataLoader object with the validation data
+        exp_name : str
+            Name of the experiment directory
+        val_jump : int
+            Interval between epochs to perform validation
+        """
+        # Create the experiment directory
+        if not os.path.exists(exp_name):
+            os.makedirs(exp_name)
+
+        # Initialize the optimizers
+        node_optimizer = torch.optim.Adam(self.node_model.parameters(), lr=self.learning_rate)
+        edge_optimizer = torch.optim.Adam(self.edge_model.parameters(), lr=self.learning_rate)
+        # Initialize early stopping
+        node_early_stopping = EarlyStopping(patience=self.patience, delta=self.delta, model_name=os.path.join(exp_name, 'node_model.pt'))
+        edge_early_stopping = EarlyStopping(patience=self.patience, delta=self.delta, model_name=os.path.join(exp_name, 'edge_model.pt'))
+
+        # Training loop
+        node_train_losses = []
+        edge_train_losses = []
+        node_val_losses = []
+        edge_val_losses = []
+        node_val_losses_per_t_step = []
+        edge_val_losses_per_t_step = []
+
+        print("Starting training...")
+        for epoch in range(self.n_epochs):
+
+            # Set models to training mode
+            self.node_model.train()
+            self.edge_model.train()
+
+            start = time.time()
+            self.ground_truth = {k: [] for k in self.node_attributes}
+            self.prediction   = {k: [] for k in self.node_attributes}
+
+            node_train_loss, edge_train_loss = self.train_epoch(train_data, node_optimizer, edge_optimizer, node_early_stopping, edge_early_stopping)
+                        
+            node_train_losses.append(node_train_loss)
+            edge_train_losses.append(edge_train_loss)
+
+            # Check early stopping criteria
+            """
+            node_early_stopping(node_train_loss.sum(), self.node_model)  #TODO: check if .sum() is required
+            edge_early_stopping(edge_train_loss, self. edge_model)
+
+            if node_early_stopping.early_stop and edge_early_stopping.early_stop:
+                print('Early stopping')
+                break
+            """
+
+            print_node_loss = ' '.join([f'{node_loss:.4f}' for node_loss in node_train_loss])
+            print(f'Epoch: {epoch+1}, edge loss: {edge_train_loss:.4f}, node loss: {print_node_loss}. Time elapsed: {time.time()-start:.2f} seconds')
+
+            # Perform validation every N epoch
+            if not (epoch+1) % val_jump:
+                node_val_loss, edge_val_loss, node_val_loss_per_t_step, edge_val_loss_per_t_step = self.eval(val_data)
+
+                node_val_losses.append(node_val_loss)
+                edge_val_losses.append(edge_val_loss)
+                node_val_losses_per_t_step.append(node_val_loss_per_t_step)
+                edge_val_losses_per_t_step.append(edge_val_loss_per_t_step)
+
+            print("---------------------------------------------------------")
+        
+        # Save losses to CSV files
+        self.save_losses(node_train_losses, edge_train_losses, node_val_losses, edge_val_losses, node_val_losses_per_t_step, edge_val_losses_per_t_step, exp_name)
+
+        # Plot losses
+        self.plot_losses(node_train_losses, edge_train_losses, node_val_losses, edge_val_losses, exp_name)
+
+    def eval(self, val_data, time_step_jump=20):
+        """
+        Evaluate the model using the provided validation data
+
+        Parameters
+        ----------
+        val_data : torch_geometric.DataLoader
+            DataLoader object with the validation data
+        time_step_jump : int
+            Interval between time steps to evaluate the model
+
+        Returns
+        -------
+        node_val_loss : float
+            Node validation loss
+        edge_val_loss : float
+            Edge validation loss
+        node_val_loss_per_t_step : dict
+            Node validation loss per time step
+        edge_val_loss_per_t_step : dict
+            Edge validation loss per time step
+
+        """
+        # Initialize mean losses
+        edge_test_losses = 0
+        node_test_losses = np.zeros(self.n_node_features, dtype=float)
+
+        # Initialize losses per time step
+        node_test_losses_per_t_step = {}
+        edge_test_losses_per_t_step = {}
+
+        # Initialize the models in evaluation mode
+        self.node_model.eval()
+        self.edge_model.eval()
+        start = time.time()
+        # Perform validation
+        with torch.no_grad():
+            for batch_idx, batch_0 in enumerate(val_data):
+                # Check loss at each time step
+                n_steps_checked = 0
+                for t_step in range(1,self.n_t_steps,time_step_jump):
+                    g_batch_0 = batch_0.clone().to(self.device)
+                    t_step_std =  t_step / self.n_t_steps - 0
+                    g_batch_t, e_batch_t = diffuse_t_steps(g_batch_0, t_step, self.n_t_steps, self.alpha_decay, n_features=self.n_node_features)
+                    g_batch_t.x[:, -1] = t_step_std
+            
+                    pred_epsilon_t = predict_noise(g_batch_t, self.node_model, self.edge_model)
+
+                    # Calculate the losses for node features and edge attributes
+                    node_losses, edge_loss = get_graph_losses(e_batch_t, pred_epsilon_t)  
+
+                    # Add losses to the cumulative sum
+                    node_test_losses += np.array([loss.item() for loss in node_losses])
+                    edge_test_losses += edge_loss.item()
+
+                    # Save losses per time step
+                    
+                    node_test_losses_per_t_step[t_step] = np.array([loss.item() for loss in node_losses]) / len(val_data)
+                    edge_test_losses_per_t_step[t_step] = edge_loss.item() / len(val_data)
+
+                    n_steps_checked += 1
+
+        # Compute the average loss of all t's over the validation set
+        # convert n_t_steps from tensor to int if needed
+        if type(self.n_t_steps) == torch.Tensor:
+            self.n_t_steps = self.n_t_steps.item()
+
+        node_test_losses /=  (len(val_data) * n_steps_checked)
+        edge_test_losses /= (len(val_data) * n_steps_checked)
+
+        print_node_loss = ' '.join([f'{node_loss:.4f}' for node_loss in node_test_losses])
+        print(f'Validation losses: edge loss: {edge_test_losses:.4f}, node loss: {print_node_loss}. Time elapsed: {time.time()-start:.2f} seconds')
+
+        return node_test_losses, edge_test_losses, node_test_losses_per_t_step, edge_test_losses_per_t_step
 
     def train_epoch(self, train_data, node_optimizer, edge_optimizer, node_early_stopping, edge_early_stopping):
         """Train the model for one epoch."""
@@ -676,7 +835,6 @@ class DenoisingModel():
                 t_step = torch.randint(0, self.n_t_steps, (1,))[0]
                 t_step_std =  t_step / self.n_t_steps - 0.5
 
-                # Reset gradients #TODO: why?
                 node_optimizer.zero_grad()
                 edge_optimizer.zero_grad()
 
@@ -697,23 +855,24 @@ class DenoisingModel():
                 self.optimize(node_loss, node_optimizer, self.node_model, max_norm=2.0, early_stopping=node_early_stopping)
                 self.optimize(edge_loss, edge_optimizer, self.edge_model, max_norm=2.0, early_stopping=edge_early_stopping)
 
-                # Randomly sample batches to store data
-                if not t_step%1 and batch_idx == 0:
-                    for key, idx in zip(self.node_attributes, range(self.n_node_features+1)):
-                        # In this order: edge_attr, x0, x1, x2, x3, ... to lists
-                        gt_value   = (e_batch_t.edge_attr if not idx else e_batch_t.x[:, idx-1]).cpu().detach().numpy().tolist()
-                        pred_value = (pred_epsilon_t.edge_attr if not idx else pred_epsilon_t.x[:, idx-1]).cpu().detach().numpy().tolist()
-
-                        # Append to dictionaries
-                        self.ground_truth[key].append(gt_value)
-                        self.prediction[key].append(pred_value)
-
         node_loss_cum /= (self.n_eras * len(train_data))
         edge_loss_cum /= (self.n_eras * len(train_data))  
        
         return node_loss_cum, edge_loss_cum
+    
+    def compute_losses(self, e_batch_t, pred_epsilon_t):
+        """Compute node and edge losses."""
+        node_losses, edge_loss = get_graph_losses(e_batch_t, pred_epsilon_t)
+        return torch.stack(node_losses).sum(), edge_loss
 
-    def save_losses(self, node_train_losses, edge_train_losses, node_val_losses, edge_val_losses):
+    def optimize(self, loss, optimizer, model, max_norm, early_stopping):
+        """Optimize a given loss."""
+        if not early_stopping.early_stop:
+            loss.backward(retain_graph=True)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=max_norm)
+            optimizer.step()
+
+    def save_losses(self, node_train_losses, edge_train_losses, node_val_losses, edge_val_losses, node_val_losses_per_t_step, edge_val_losses_per_t_step, exp_name):
         """
         Save losses to CSV files.
 
@@ -727,13 +886,41 @@ class DenoisingModel():
             Node validation losses.
         edge_val_losses : list or array
             Edge validation losses.
+        node_val_losses_per_t_step : list of dicts
+            Node validation losses per time step. Each dictionary corresponds to an epoch contains the losses for each node attribute for all time steps.
+        edge_val_losses_per_t_step : list of dicts
+            Edge validation losses per time step. Each dictionary corresponds to an epoch contains the losses for each edge attribute for all time steps.
         """
-        np.savetxt(os.path.join(self.exp_name, 'node_train_losses.csv'), node_train_losses, delimiter=',')
-        np.savetxt(os.path.join(self.exp_name, 'edge_train_losses.csv'), edge_train_losses, delimiter=',')
-        np.savetxt(os.path.join(self.exp_name, 'node_val_losses.csv'), node_val_losses, delimiter=',')
-        np.savetxt(os.path.join(self.exp_name, 'edge_val_losses.csv'), edge_val_losses, delimiter=',')
 
-    def plot_losses(self, node_train_losses, edge_train_losses, node_val_losses, edge_val_losses):
+        # Save mean losses
+        np.savetxt(os.path.join(exp_name, 'node_train_losses.csv'), node_train_losses, delimiter=',')
+        np.savetxt(os.path.join(exp_name, 'edge_train_losses.csv'), edge_train_losses, delimiter=',')
+        np.savetxt(os.path.join(exp_name, 'node_val_losses.csv'), node_val_losses, delimiter=',')
+        np.savetxt(os.path.join(exp_name, 'edge_val_losses.csv'), edge_val_losses, delimiter=',')
+
+        # Save losses per time step
+        data = []
+        for epoch, losses_at_epoch in enumerate(node_val_losses_per_t_step):
+            for t_step, losses in losses_at_epoch.items():
+                # losses is assumed to be a list of node features
+                data_entry = {'Epoch': epoch, 'Time Step': t_step}
+                for feature_idx, loss in enumerate(losses):
+                    data_entry[f'Feature_{feature_idx}'] = loss
+                data.append(data_entry)
+
+        node_val_losses_df = pd.DataFrame(data)
+        node_val_losses_df.to_csv(os.path.join(exp_name, 'node_val_losses_per_t_step.csv'), index=False)
+
+        data = []
+        for epoch, loss_at_epoch in enumerate(edge_val_losses_per_t_step):
+            for t_step, loss in loss_at_epoch.items():
+                data_entry = {'Epoch': epoch, 'Time Step': t_step, 'Loss': loss}
+            data.append(data_entry)
+
+        edge_val_losses_df = pd.DataFrame(data)
+        edge_val_losses_df.to_csv(os.path.join(exp_name, 'edge_val_losses_per_t_step.csv'), index=False)
+                  
+    def plot_losses(self, node_train_losses, edge_train_losses, node_val_losses, edge_val_losses, exp_name):
         """
         Plot and save the losses.
 
@@ -760,137 +947,7 @@ class DenoisingModel():
         ax[3].set_title('Edge val losses')
 
         plt.tight_layout()
-        plt.savefig(os.path.join(self.exp_name, 'losses.png'))
+        plt.savefig(os.path.join(exp_name, 'losses.png'))
         plt.close(fig)
 
-    def train(self, train_data, val_data, exp_name):
-        """
-        Train the denoising model using the provided data
-
-        Parameters
-        ----------
-        train_data : torch_geometric.DataLoader
-            DataLoader object with the training data
-        val_data : torch_geometric.DataLoader
-            DataLoader object with the validation data
-        exp_name : str
-            Name of the experiment directory
-        """
-
-        # Create the experiment directory
-        if not os.path.exists(exp_name):
-            os.makedirs(exp_name)
-
-        # Initialize the optimizers
-        node_optimizer = torch.optim.Adam(self.node_model.parameters(), lr=self.learning_rate)
-        edge_optimizer = torch.optim.Adam(self.edge_model.parameters(), lr=self.learning_rate)
-        # Initialize early stopping
-        node_early_stopping = EarlyStopping(patience=self.patience, delta=self.delta, model_name=os.path.join(exp_name, 'node_model.pt'))
-        edge_early_stopping = EarlyStopping(patience=self.patience, delta=self.delta, model_name=os.path.join(exp_name, 'edge_model.pt'))
-
-        # Training loop
-        node_train_losses = []
-        edge_train_losses = []
-        node_val_losses = []
-        edge_val_losses = []
-
-        print("Starting training...")
-        for epoch in range(self.n_epochs):
-            start = time.time()
-            self.ground_truth = {k: [] for k in self.node_attributes}
-            self.prediction   = {k: [] for k in self.node_attributes}
-
-            node_train_loss, edge_train_loss = self.train_epoch(train_data, node_optimizer, edge_optimizer, node_early_stopping, edge_early_stopping)
-            
-            # Compute the average train loss over n_t_steps
-    
-            node_train_losses.append(node_train_loss)
-            edge_train_losses.append(edge_train_loss)
-
-            # Check early stopping criteria
-            """
-            node_early_stopping(node_train_loss.sum(), self.node_model)  #TODO: check if .sum() is required
-            edge_early_stopping(edge_train_loss, self. edge_model)
-
-            if node_early_stopping.early_stop and edge_early_stopping.early_stop:
-                print('Early stopping')
-                break
-            """
-
-            print_node_loss = ' '.join([f'{node_loss:.4f}' for node_loss in node_train_loss])
-            print(f'Epoch: {epoch+1}, edge loss: {edge_train_loss:.4f}, node loss: {print_node_loss}. Time elapsed: {time.time()-start:.2f} seconds')
-
-            # Perform validation
-            node_val_loss, edge_val_loss = self.eval(val_data)
-
-            node_val_losses.append(node_val_loss)
-            edge_val_losses.append(edge_val_loss)
-        
-        # Save losses to CSV files
-        self.save_losses(node_train_losses, edge_train_losses, node_val_losses, edge_val_losses)
-
-        # Plot losses
-        self.plot_losses(node_train_losses, edge_train_losses, node_val_losses, edge_val_losses)
-
-    def eval(self, val_data):
-        """
-        Evaluate the model using the provided validation data
-
-        Parameters
-        ----------
-        val_data : torch_geometric.DataLoader
-            DataLoader object with the validation data
-
-        Returns
-        -------
-        node_val_loss : float
-            Node validation loss
-        edge_val_loss : float
-            Edge validation loss
-        """
-        # Initialize losses
-        edge_test_losses = 0
-        node_test_losses = np.zeros(self.n_node_features, dtype=float)
-
-        # Initialize the models in evaluation mode
-        self.node_model.eval()
-        self.edge_model.eval()
-
-        # Perform validation
-        with torch.no_grad():
-            for batch_idx, batch_0 in enumerate(val_data):
-                # Clone batch and move to device
-                batch_0 = batch_0.to(device)
-                g_batch_0 = batch_0.clone()
-
-                # Apply full diffusion. For validation, we are interested in knowing if the model can denoise from the beginning.
-                g_batch_t, e_batch_t = diffuse_t_steps(g_batch_0, self.n_t_steps, self.n_t_steps, self.alpha_decay, n_features=self.n_node_features)
-                
-                # Denoise batch 
-                g_batch_0 = denoise(g_batch_t,
-                                    self.n_t_steps, self.alpha_decay,
-                                    self.node_model, self.edge_model,
-                                    n_features=self.n_node_features)
-                
-                # Calculate the loss for node features and edge attributes
-                node_losses, edge_loss = get_graph_losses(batch_0, g_batch_0)
-                
-                # Get items
-                node_loss_cum = np.array([node_loss.item() for node_loss in node_losses])[:self.n_node_features]
-                edge_loss_cum = edge_loss.item()
-                
-                # Append average losses
-                edge_test_losses += edge_loss_cum
-                node_test_losses += node_loss_cum
-                
-                print_node_loss = ' '.join([f'{node_loss:.4f}' for node_loss in node_loss_cum])
-                print(f'Batch: {batch_idx}, edge loss: {edge_loss_cum:.4f}, node loss: {print_node_loss}')
-
-        # Compute the average test loss over n_t_steps
-        node_test_losses /= (self.n_t_steps * len(val_data))
-        edge_test_losses /= (self.n_t_steps * len(val_data))
-
-        return node_test_losses, edge_test_losses
-
-
-
+ 

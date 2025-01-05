@@ -1,4 +1,6 @@
+import json
 import numpy as np
+import os 
 import torch
 
 # Checking if pytorch can run in GPU, else CPU
@@ -27,60 +29,81 @@ def check_finite_attributes(data):
     return True
 
 
-def standardize_dataset(dataset, labels, transformation=None):
+def standardize_dataset(dataset_path, dest, transformation=None):
     """Standardizes a given dataset (both nodes features and edge attributes).
     Typically, a normal distribution is applied, although it be easily modified to apply other distributions.
     Check those graphs with finite attributes and retains labels accordingly.
 
     Currently: normal distribution.
 
-    Args:
-        dataset        (list): List containing graph structures.
-        labels         (list): List containing graph labels.
-        transformation (str):  Type of transformation strategy for edge attributes (None, 'inverse-quadratic').
+    Parameters
+    ----------
+    dataset_path: str
+        Path to the dataset. It must include the following files:
+            dataset.pt: A list containing graph structures.
+            labels.pt: A list containing labels for each graph.
+            train_labels.txt: A list of labels for the training set.
+            val_labels.txt: A list of labels for the validation set.
+            test_labels.txt: A list of labels for the test set.
 
-    Returns:
-        Tuple: A tuple containing the normalized dataset and parameters needed to re-scale predicted properties.
-            - dataset_std        (list): Normalized dataset.
-            - labels_std         (list): Labels from valid graphs.
-            - dataset_parameters (dict): Parameters needed to re-scale predicted properties from the dataset.
+    dest: str
+        Path to save the standardized dataset.
     """
+    print("Loading original dataset...")
+    dataset = torch.load(os.path.join(dataset_path, 'dataset.pt'), weights_only=False)
+    labels  = torch.load(os.path.join(dataset_path, 'labels.pt'),  weights_only=False)
 
+    print("Checking finite attributes...")
     # Clone the dataset and labels
     dataset_std = []
     labels_std  = []
+    graph_idx = 0
     for graph, label in zip(dataset, labels):
         if check_finite_attributes(graph):
             dataset_std.append(graph.clone())
             labels_std.append(label)
+        graph_idx += 1
+        print(f"Graph {graph_idx} checked...")
 
-    # Number of graphs
-    n_graphs = len(dataset_std)
-    
-    # Number of features per node
-    n_features = dataset_std[0].num_node_features
-    
-    # Number of features per graph
-    n_y = dataset_std[0].y.shape[0]
-    
-    # Check if non-linear standardization
+
+    # Apply the transformation to the edge attributes
     if transformation == 'inverse-quadratic':
+        print("Applying inverse quadratic transformation to edge attributes...")
+        graph_idx = 0
         for data in dataset_std:
             data.edge_attr = 1 / data.edge_attr.pow(2)
+            graph_idx += 1
+            print(f"Graph {graph_idx} transformed...")
 
-    # Compute means
+    # Load dataset subsets
+    print("Reading labels...")
+    train_labels = np.genfromtxt(os.path.join(dataset_path, 'train_labels.txt'), dtype='str').tolist()
+    val_labels   = np.genfromtxt(os.path.join(dataset_path, 'val_labels.txt'),   dtype='str').tolist()
+    test_labels  = np.genfromtxt(os.path.join(dataset_path, 'test_labels.txt'),  dtype='str').tolist()
+
+    print("Getting subsets...")
+    train_dataset_std = get_datasets(train_labels, labels_std, dataset_std)
+    val_dataset_std = get_datasets(val_labels,  labels_std, dataset_std)
+    test_dataset_std  = get_datasets(test_labels,  labels_std , dataset_std)
+
+    # Create the mean and standard deviation for the training set
+    n_graphs = len(train_dataset_std)
+    n_features = train_dataset_std[0].num_node_features
+    n_y = train_dataset_std[0].y.shape[0]
+    
+    # Transform edge attributes
+    print("Transforming edge attributes...")
     target_mean = torch.zeros(n_y)
     for target_index in range(n_y):
-        target_mean[target_index] = sum([data.y[target_index] for data in dataset_std]) / n_graphs
+        target_mean[target_index] = sum([data.y[target_index] for data in train_dataset_std]) / n_graphs
     
-    edge_mean = sum([data.edge_attr.mean() for data in dataset_std]) / n_graphs
+    edge_mean = sum([data.edge_attr.mean() for data in train_dataset_std]) / n_graphs
     
-    # Compute standard deviations
     target_std = torch.zeros(n_y)
     for target_index in range(n_y):
-        target_std[target_index] = torch.sqrt(sum([(data.y[target_index] - target_mean[target_index]).pow(2).sum() for data in dataset_std]) / (n_graphs * (n_graphs - 1)))
+        target_std[target_index] = torch.sqrt(sum([(data.y[target_index] - target_mean[target_index]).pow(2).sum() for data in train_dataset_std]) / (n_graphs * (n_graphs - 1)))
     
-    edge_std = torch.sqrt(sum([(data.edge_attr - edge_mean).pow(2).sum() for data in dataset_std]) / (n_graphs * (n_graphs - 1)))
+    edge_std = torch.sqrt(sum([(data.edge_attr - edge_mean).pow(2).sum() for data in train_dataset_std]) / (n_graphs * (n_graphs - 1)))
     
     # In case we want to increase the values of the normalization
     scale = torch.tensor(1e0)
@@ -88,28 +111,35 @@ def standardize_dataset(dataset, labels, transformation=None):
     target_factor = target_std / scale
     edge_factor   = edge_std   / scale
 
-    # Update normalized values into the database
-    for data in dataset_std:
-        data.y         = (data.y         - target_mean) / target_factor
-        data.edge_attr = (data.edge_attr - edge_mean)   / edge_factor
+    for dataset in [train_dataset_std, val_dataset_std, test_dataset_std]:
+        print(f"Transforming {len(dataset)} graphs...")
+        for data in dataset:
+            data.y         = (data.y         - target_mean) / target_factor
+            data.edge_attr = (data.edge_attr - edge_mean)   / edge_factor
 
-    # Same for the node features
+    # Transform node attributes
+
     feat_mean = torch.zeros(n_features)
     feat_std  = torch.zeros(n_features)
+    print("Transforming node attributes...")
     for feat_index in range(n_features):
         # Compute mean
-        temp_feat_mean = sum([data.x[:, feat_index].mean() for data in dataset_std]) / n_graphs
+        temp_feat_mean = sum([data.x[:, feat_index].mean() for data in train_dataset_std]) / n_graphs
         
         # Compute standard deviations
-        temp_feat_std = torch.sqrt(sum([(data.x[:, feat_index] - temp_feat_mean).pow(2).sum() for data in dataset_std]) / (n_graphs * (n_graphs - 1)))
+        temp_feat_std = torch.sqrt(sum([(data.x[:, feat_index] - temp_feat_mean).pow(2).sum() for data in train_dataset_std]) / (n_graphs * (n_graphs - 1)))
 
         # Update normalized values into the database
-        for data in dataset_std:
-            data.x[:, feat_index] = (data.x[:, feat_index] - temp_feat_mean) * scale / temp_feat_std
+        for dataset in [train_dataset_std, val_dataset_std, test_dataset_std]:
+            print(f"Transforming {len(dataset)} graphs for feature {feat_index}...")
+            for data in dataset:
+                data.x[:, feat_index] = (data.x[:, feat_index] - temp_feat_mean) * scale / temp_feat_std
         
         # Append corresponing values for saving
         feat_mean[feat_index] = temp_feat_mean
         feat_std[feat_index]  = temp_feat_std
+
+   
 
     # Create and save as a dictionary
     dataset_parameters = {
@@ -122,7 +152,23 @@ def standardize_dataset(dataset, labels, transformation=None):
         'feat_std':       feat_std,
         'scale':          scale
     }
-    return dataset_std, labels_std, dataset_parameters
+    
+    # Join the subsets and save the standardized dataset
+    dataset_std = train_dataset_std + val_dataset_std + test_dataset_std
+    torch.save(dataset_std, os.path.join(dest, 'standardized_dataset.pt'))
+    torch.save(labels_std,  os.path.join(dest, 'standardized_labels.pt'))
+    
+    # Convert torch tensors to numpy arrays
+    numpy_dict = {}
+    for key, value in dataset_parameters.items():
+        try:
+            numpy_dict[key] = value.cpu().numpy().tolist()
+        except:
+            numpy_dict[key] = value
+
+    # Dump the dictionary with numpy arrays to a JSON file
+    with open(os.path.join(dest, "standardized_parameters.json"), 'w') as json_file:
+        json.dump(numpy_dict, json_file)
 
 
 def revert_standardize_dataset(dataset, dataset_parameters):
@@ -168,17 +214,21 @@ def get_datasets(subset_labels, dataset_labels, dataset):
         list: Filtered dataset containing elements corresponding to the specified labels (not ordered).
     """
 
-    subset_labels  = np.array(subset_labels)
+    subset_labels = np.array(subset_labels)
     dataset_labels = np.array(dataset_labels)
-    
-    dataset_idxs = []
-    for dataset_idx, dataset_label in enumerate(dataset_labels):
-        for subset_idx, subset_label in enumerate(subset_labels):
-            if dataset_label.split()[0] == subset_label:
-                dataset_idxs.append(dataset_idx)
-        if not len(subset_labels):
-            break
+
+    # Extract the first word of each dataset_label
+    dataset_first_words = np.array([label.split()[0] for label in dataset_labels])
+
+    # Find matches
+    matches = np.isin(dataset_first_words, subset_labels)
+
+    # Get the indices
+    dataset_idxs = np.where(matches)[0]
+
+    # Return the subset of the dataset
     return [dataset[idx] for idx in dataset_idxs]
+
 
 
 def check_extend_POSCAR(structure, minimum_lattice_vector):
