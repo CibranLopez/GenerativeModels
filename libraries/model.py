@@ -326,6 +326,118 @@ def denoise(batch_t, n_t_steps, alpha_decay, node_model, edge_model, plot_steps=
     return batch_s
 
 
+class GNN(torch.nn.Module):
+    """
+    Combined Graph Convolutional Neural Network for node and edge prediction.
+    Alternately updates node and edge embeddings after each convolutional layer.
+    """
+
+    def __init__(self, n_node_features, n_graph_features, pdropout):
+        super(GNN, self).__init__()
+
+        torch.manual_seed(12345)
+
+        # Node update layers (GraphConv)
+        self.node_conv1 = GraphConv(n_node_features + n_graph_features, 256)
+        self.node_conv2 = GraphConv(256, 512)
+        self.node_conv3 = GraphConv(512, 256)
+        self.node_conv4 = GraphConv(256, n_node_features)
+
+        # Edge update layers (Linear)
+        self.edge_linear1 = Linear(n_node_features + n_graph_features + 1, 128)
+        self.edge_linear2 = Linear(128, 256)
+        self.edge_linear3 = Linear(256, 64)
+        self.edge_linear4 = Linear(64, 1)
+
+        # Normalization layers
+        self.node_norm1 = torch.nn.BatchNorm1d(256)
+        self.edge_norm1 = torch.nn.BatchNorm1d(64)
+
+        self.pdropout = pdropout
+
+    def forward(self, batch, graph_features):
+        """
+        Perform forward propagation alternately updating nodes and edges.
+
+        Args:
+            batch: A batch object containing x, edge_index, and edge_attr.
+            graph_features: Graph-level features tensor.
+
+        Returns:
+            Updated batch object with updated x and edge_attr.
+        """
+
+        # Update 1
+        batch.x         = self.node_forward(batch, self.node_conv1)
+        batch.edge_attr = self.edge_forward(batch, self.edge_linear1)
+
+        # Update 2
+        batch.x         = self.node_forward(batch, self.node_conv2)
+        batch.edge_attr = self.edge_forward(batch, self.edge_linear2)
+
+        # Update 3
+        batch.x         = self.node_forward(batch, self.node_conv3)
+        batch.edge_attr = self.edge_forward(batch, self.edge_linear3)
+
+        # Update 4
+        batch.x         = self.node_forward(batch, self.node_conv4)
+        batch.edge_attr = self.edge_forward(batch, self.edge_linear4)
+        return batch
+
+    def node_forward(self, batch, node_conv):
+        """
+        Update node embeddings using the current node features and edge attributes.
+
+        Args:
+            batch: Batch object containing x, edge_index, and edge_attr.
+            node_conv: Graph convolutional layer.
+
+        Returns:
+            Updated node embeddings.
+        """
+        # Read properties from the batch object
+        x, edge_index, edge_attr = batch.x, batch.edge_index, batch.edge_attr
+
+        x = node_conv(x, edge_index, edge_attr)
+        x = x.relu()
+        return x
+
+    def edge_forward(self, batch, edge_linear):
+        """
+        Update edge attributes using the current node features and edge attributes.
+
+        Args:
+            batch: Batch object containing x, edge_index, and edge_attr.
+            edge_linear: Linear layer for edge attribute prediction.
+
+        Returns:
+            Updated edge attributes.
+        """
+        # Read properties from the batch object
+        x, edge_index, edge_attr = batch.x, batch.edge_index, batch.edge_attr
+
+        # Define x_i and x_j as features of every corresponding pair of nodes (same order than attributes)
+        x_i = x[edge_index[0]]
+        x_j = x[edge_index[1]]
+
+        # Reshape previous_attr tensor to have the same number of dimensions as x
+        previous_attr = edge_attr.view(-1, 1)  # Reshapes from [...] to [..., 1]
+
+        # Calculate squared distance between node features
+        x_diff = torch.pow(x_i[:, :-1] - x_j[:, :-1], 2)
+
+        # Concatenate node differences, edge attributes, and graph features
+        edge_attr = torch.cat((x_diff, x_i[:, -1:]),
+                              dim=1)  # Of dimension [..., features_channels]
+
+        # Concatenate the tensors along dimension 1 to get a tensor of size [..., num_embeddings ~ 6]
+        edge_attr = torch.cat((edge_attr, previous_attr), dim=1)
+
+        # Apply linear convolution with ReLU activation function
+        edge_attr = edge_linear(edge_attr).ravel()
+        return edge_attr
+
+
 class nGCNN(torch.nn.Module):
     """Graph convolutional neural network for the prediction of node embeddings.
     The network consists of recursive convolutional layers, which input node features plus graph level embeddings
@@ -411,50 +523,6 @@ class eGCNN(nn.Module):
         x = self.norm1(x)  # Batch normalization
         x = x.relu()
         x = self.linear4(x)
-        return x
-
-
-class line_eGCNN(nn.Module):
-    """Graph convolutional neural network for the prediction of edge attributes.
-    In this implementation, we use line-graphs, exploiding the power of GNNs from link prediction.
-    Predictions of the new link arise from the product of the two involved nodes and the previous edge attribute.
-    The network consists of recursive convolutional layers, which input edge features plus graph level embeddings
-    and plus previous edge attribute embeddings while it outputs updated attribute embeddings.
-    """
-
-    def __init__(self, n_node_features, n_graph_features, pdropout):
-        super(line_eGCNN, self).__init__()
-
-        # Set random seed for reproducibility
-        torch.manual_seed(12345)
-
-        self.linear1 = Linear(n_node_features + n_graph_features + 1,
-                              128)  # Introducing node features + previous edge attribute
-        self.linear2 = Linear(128, 64)  # Convolutional layer
-        self.linear3 = Linear(64, 1)  # Predicting one single weight
-
-        self.pdropout = pdropout
-
-    def forward(self, x_i, x_j, previous_attr):
-        # Dot product between node distances
-        x_i[:, :-1] = torch.pow(x_i[:, :-1] - x_j[:, :-1], 2)  # Of dimension [..., features_channels]
-
-        # Reshape previous_attr tensor to have the same number of dimensions as x
-        previous_attr = previous_attr.view(-1, 1)  # Reshapes from [...] to [..., 1]
-
-        # Concatenate the tensors along dimension 1 to get a tensor of size [..., num_embeddings ~ 6]
-        x = torch.cat((x_i, previous_attr), dim=1)
-
-        # Apply linear convolution with ReLU activation function
-        x = self.linear1(x)
-
-        # Dropout layer (only for training)
-        x = F.dropout(x, p=self.pdropout, training=self.training)
-
-        # Last linear convolution
-        x = self.linear2(x)
-        x = x.relu()
-        x = self.linear3(x)
         return x
 
 
