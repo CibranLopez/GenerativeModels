@@ -208,36 +208,19 @@ def diffuse_t_steps(batch_0, t_step, n_t_steps, alpha_decay, n_features=None):
     return batch_t, epsilon_t
 
 
-def predict_noise(batch_t, node_model, edge_model):
+def predict_noise(batch_t, model):
     """Predicts noise given some batch of noisy graphs using specified models.
 
     Args:
-        batch_t    (torch_geometric.data.Data): Batch with noisy undirected graphs, consistent with model definitions.
-        node_model (torch.nn.Module):           Model for graph-node prediction.
-        edge_model (torch.nn.Module):           Model for graph-edge prediction.
-        
+        batch_t (torch_geometric.data.Data): Batch with noisy undirected graphs, consistent with model definitions.
+        model   (torch.nn.Module):           Model for graph noise prediction.
 
     Returns:
         pred_e_batch_t (torch_geometric.data.Data): Predicted noise for batch g_batch_t.
     """
 
-    batch_0 = batch_t.clone()
-
     # Perform a single forward pass for predicting node features
-    out_x = node_model(batch_t.x, batch_t.edge_index, batch_t.edge_attr)
-
-    # Define x_i and x_j as features of every corresponding pair of nodes (same order than attributes)
-    x_i = batch_t.x[batch_t.edge_index[0]]
-    x_j = batch_t.x[batch_t.edge_index[1]]
-    
-    # Perform a single forward pass for predicting edge attributes
-    # Introduce previous edge attributes as features as well
-    out_attr = edge_model(x_i, x_j, batch_t.edge_attr).ravel()
-
-    # Update node features and edge attributes in g_batch_0 with the predicted out_x and out_attr
-    batch_0.x         = out_x
-    batch_0.edge_attr = out_attr
-    return batch_0
+    return model(batch_t)
 
 
 def denoising_step(batch_t, epsilon_t, t_step, n_t_steps, alpha_decay, n_features=None):
@@ -270,11 +253,6 @@ def denoising_step(batch_t, epsilon_t, t_step, n_t_steps, alpha_decay, n_feature
     sigma_t_to_s = get_sigma_t_to_s(t_step, t_step-1, n_t_steps, alpha_decay)
 
     aux = sigma_t_s**2 / (alpha_t_s * sigma_t)
-    
-    sigma_s = get_sigma_t(t_step-1, n_t_steps, alpha_decay)
-    alpha_t = get_alpha_t(t_step, n_t_steps, alpha_decay)
-    alpha_s = get_alpha_t(t_step-1, n_t_steps, alpha_decay)
-    #print('alpha_t', alpha_t, 'alpha_s', alpha_s, 'alpha_t_s', alpha_t_s, 'sigma_t', sigma_t, 'sigma_s', sigma_s, 'sigma_t_s', sigma_t_s, 'sigma_t_to_s', sigma_t_to_s, 'aux', aux)
 
     # Backward pass
     batch_s.x[:, :n_features] = batch_s.x[:, :n_features] / alpha_t_s - aux * epsilon_t.x         + sigma_t_to_s * epsilon.x
@@ -446,94 +424,6 @@ class GNN(torch.nn.Module):
         # Apply linear convolution with ReLU activation function
         edge_attr = edge_linear(edge_attr).ravel()
         return edge_attr
-
-
-class nGCNN(torch.nn.Module):
-    """Graph convolutional neural network for the prediction of node embeddings.
-    The network consists of recursive convolutional layers, which input node features plus graph level embeddings
-    while it outputs updated node level embeddings.
-    """
-
-    def __init__(self, n_node_features, n_graph_features, pdropout):
-        super(nGCNN, self).__init__()
-
-        # Set random seed for reproducibility
-        torch.manual_seed(12345)
-
-        # Define graph convolution layers
-        # Introducing graph features
-        self.conv1 = GraphConv(n_node_features+n_graph_features, 256)
-        self.conv2 = GraphConv(256, 512)
-        self.conv3 = GraphConv(512, 256)
-        self.conv4 = GraphConv(256, n_node_features)  # Predict all node features at once
-
-        # Normalization helps model stability
-        self.norm1 = torch.nn.BatchNorm1d(256)
-
-        self.pdropout = pdropout
-
-    def forward(self, x, edge_index, edge_attr):
-        # Apply graph convolution with ReLU activation function
-        x = self.conv1(x, edge_index, edge_attr)
-        x = x.relu()
-        x = self.conv2(x, edge_index, edge_attr)
-        x = x.relu()
-        x = self.conv3(x, edge_index, edge_attr)
-        x = self.norm1(x)  # Batch normalization
-        x = x.relu()
-        x = self.conv4(x, edge_index, edge_attr)
-        return x
-
-
-class eGCNN(nn.Module):
-    """Convolutional neural network for the prediction of edge attributes.
-    Predictions of the new link arise from the product of the two involved nodes and the previous edge attribute.
-    The network consists of recursive convolutional layers, which input edge attribute plus graph level embeddings
-    and plus previous edge attribute embeddings while it outputs updated attribute embeddings.
-    """
-
-    def __init__(self, n_node_features, n_graph_features, pdropout):
-        super(eGCNN, self).__init__()
-
-        # Set random seed for reproducibility
-        torch.manual_seed(12345)
-
-        # Define linear convolution layers
-        # Introducing node features + previous edge attribute
-        self.linear1 = Linear(n_node_features+n_graph_features+1, 128)
-        self.linear2 = Linear(128, 256)
-        self.linear3 = Linear(256, 64)
-        self.linear4 = Linear(64, 1)  # Predicting one single weight
-
-        # Normalization helps model stability
-        self.norm1 = torch.nn.BatchNorm1d(64)
-        
-        self.pdropout = pdropout
-
-    def forward(self, x_i, x_j, previous_attr):
-        # Dot product between node distances
-        x_i = torch.cat((torch.pow(x_i[:, :-1] - x_j[:, :-1], 2), x_i[:, -1:]), dim=1)  # Of dimension [..., features_channels]
-        
-        # Reshape previous_attr tensor to have the same number of dimensions as x
-        previous_attr = previous_attr.view(-1, 1)  # Reshapes from [...] to [..., 1]
-
-        # Concatenate the tensors along dimension 1 to get a tensor of size [..., num_embeddings ~ 6]
-        x = torch.cat((x_i, previous_attr), dim=1)
-
-        # Apply linear convolution with ReLU activation function
-        x = self.linear1(x)
-
-        # Dropout layer (only for training)
-        x = F.dropout(x, p=self.pdropout, training=self.training)
-
-        # Last linear convolution
-        x = self.linear2(x)
-        x = x.relu()
-        x = self.linear3(x)
-        x = self.norm1(x)  # Batch normalization
-        x = x.relu()
-        x = self.linear4(x)
-        return x
 
 
 def get_graph_losses(graph1, graph2):
