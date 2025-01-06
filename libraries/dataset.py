@@ -150,8 +150,9 @@ def revert_standardize_dataset(dataset, dataset_parameters):
 
     # Same for the node features
     for feat_index in range(dataset_rstd[0].num_node_features):
+        feature_factor = dataset_parameters['feat_std'][feat_index] / dataset_parameters['scale']
         for data in dataset_rstd:
-            data.x[:, feat_index] = data.x[:, feat_index] * dataset_parameters['feat_std'][feat_index] / dataset_parameters['scale'] + dataset_parameters['feat_mean'][feat_index]
+            data.x[:, feat_index] = data.x[:, feat_index] * feature_factor + dataset_parameters['feat_mean'][feat_index]
 
     return dataset_rstd
 
