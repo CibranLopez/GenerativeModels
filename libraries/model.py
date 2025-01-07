@@ -260,15 +260,14 @@ def denoising_step(batch_t, epsilon_t, t_step, n_t_steps, alpha_decay, n_feature
     return batch_s
 
 
-def denoise(batch_t, n_t_steps, alpha_decay, node_model, edge_model, plot_steps=False, n_features=None):
+def denoise(batch_t, n_t_steps, alpha_decay, model, plot_steps=False, n_features=None):
     """Performs consecutive steps of diffusion in a reference batch of graphs.
 
     Args:
         batch_t     (Batch):           Reference batch of graphs to be denoised (step t-1).
         n_t_steps   (int):             Number of diffusive steps.
         alpha_decay (float):           Parameter which controls the decay of alpha with t.
-        node_model  (torch.nn.Module): Model for graph-node prediction.
-        edge_model  (torch.nn.Module): Model for graph-edge prediction.
+        model       (torch.nn.Module): Model for graph-noise prediction.
         plot_steps  (bool, int):       Whether to plot each intermediate step, or which graph from batch.
         n_features  (int):             Number of node features to be diffused (:n_features).
 
@@ -287,8 +286,7 @@ def denoise(batch_t, n_t_steps, alpha_decay, node_model, edge_model, plot_steps=
         batch_s.x[:, -1] = t_step_std
 
         # Predict batch noise at given time step
-        pred_epsilon_t = predict_noise(batch_s,
-                                       node_model, edge_model)
+        pred_epsilon_t = predict_noise(batch_s, model)
         
         # Check if intermediate steps are plotted; then, plot the NetworkX graph
         if plot_steps:
@@ -325,14 +323,14 @@ class GNN(torch.nn.Module):
 
         torch.manual_seed(12345)
 
-        neurons_n_1 = 256
+        neurons_n_1 = 128
         neurons_n_2 = 256
-        neurons_n_3 = 256
+        neurons_n_3 = 64
 
-        neurons_e_1 = 128
-        neurons_e_2 = 256
-        neurons_e_3 = 256
-        neurons_e_4 = 64
+        neurons_e_1 = 64
+        neurons_e_2 = 128
+        neurons_e_3 = 64
+        neurons_e_4 = 32
 
         # Node update layers (GraphConv)
         self.node_conv1 = GraphConv(n_node_features + n_graph_features, neurons_n_1)
