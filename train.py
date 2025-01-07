@@ -1,5 +1,5 @@
 """
-python train.py --model-config model_configs/config.yaml --data-path data/Loaded_MP_bandgap-sphere-images_standardized --dest-path exps/train/prueba1 --shuffle --pin-memory --check-labels 
+python train.py --model-config model_configs/config.yaml --data-path data/Loaded_MP_bandgap-sphere-images_standardized --dest-path exps/train/single_sample/1000_eras_batch_size_512_random_noise_with_eval  --pin-memory --check-labels --batch-size 512 --shuffle
 """
 
 import argparse
@@ -24,7 +24,7 @@ def main():
     parser.add_argument("--pin-memory", action="store_true", help="Whether to pin memory for the dataloader.")
     parser.add_argument("--train-ratio", type=float, default=0.98, help="Ratio of the dataset to use for training.")
     parser.add_argument("--check-labels", action="store_true", help="Whether to use predefined labels to split data instead of train ratio.")
-    parser.add_argument("--train-portion", type=float, default=0.1, help="Portion of subset to be used for training.")
+    parser.add_argument("--train-portion", type=float, default=0.05, help="Portion of subset to be used for training.")
     parser.add_argument("--valid-portion", type=float, default=1, help="Portion of subset to be used for validation.")
     parser.add_argument("--test-portion", type=float, default=1, help="Portion of subset to be used for testing.")
     parser.add_argument("--train-specific-step", type=int, default=None, help="Train the model for a specific step.")
@@ -54,7 +54,7 @@ def main():
     
     # Train the model
     start = time.time()
-    model.train(train_dataloader, val_dataloader, exp_name=args.dest_path, train_specific_step=args.train_specific_step, val_jump=1000000, ) #set val_jump to something else
+    model.train(train_dataloader, val_dataloader, exp_name=args.dest_path, train_specific_step=args.train_specific_step, val_jump=1) #set val_jump to something else
     end = time.time()
     print("Training time:", end - start)
 

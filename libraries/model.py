@@ -162,8 +162,9 @@ def get_random_graph(n_nodes, n_features, in_edge_index=None):
         edge_index = torch.clone(in_edge_index)
     
     #TODO: remove
-    torch.manual_seed(12345)
+    #torch.manual_seed(12345)
     # Generate random node features
+    torch.seed()
     x = torch.randn(n_nodes, n_features)
     torch.seed()
 
@@ -742,7 +743,6 @@ class DenoisingModel():
 
             print_node_loss = ' '.join([f'{node_loss:.4f}' for node_loss in node_train_loss])
             print(f'Epoch: {epoch+1}, edge loss: {edge_train_loss:.4f}, node loss: {print_node_loss}. Time elapsed: {time.time()-start:.2f} seconds')
-        """ #TODO: uncomment
             # Perform validation every N epoch
             if not (epoch+1) % val_jump:
                 node_val_loss, edge_val_loss, node_val_loss_per_t_step, edge_val_loss_per_t_step = self.eval(val_data)
@@ -759,7 +759,6 @@ class DenoisingModel():
 
         # Plot losses
         self.plot_losses(node_train_losses, edge_train_losses, node_val_losses, edge_val_losses, exp_name)
-        """
 
     def eval(self, val_data, time_step_jump=10):
         """
@@ -803,7 +802,7 @@ class DenoisingModel():
                 # Check loss at each time step
                 explored_batches += 1
                 n_steps_checked = 0
-                for t_step in range(1,self.n_t_steps,time_step_jump): #TODO: change 2 to self.n_t_steps
+                for t_step in range(1,self.n_t_steps,time_step_jump): 
                     g_batch_0 = batch_0.clone().to(self.device)
                     t_step_std =  t_step / self.n_t_steps - 0.5
                     g_batch_t, e_batch_t = diffuse_t_steps(g_batch_0, t_step, self.n_t_steps, self.alpha_decay, n_features=self.n_node_features)
@@ -846,8 +845,8 @@ class DenoisingModel():
         node_loss_cum = np.zeros(self.n_node_features, dtype=float)
 
         for batch_idx, batch_0 in enumerate(train_data):
-            if batch_idx == 1: #TODO: remove to use all data
-                break
+            start_batch = time.time()
+            # Clone the batch of graphs and move to device
             g_batch_0 = batch_0.clone().to(self.device)
            
             # Repeat the batch 2^N times
@@ -896,6 +895,8 @@ class DenoisingModel():
                 
                 self.optimize(node_loss, node_optimizer, self.node_model, max_norm=2.0, early_stopping=node_early_stopping)
                 self.optimize(edge_loss, edge_optimizer, self.edge_model, max_norm=2.0, early_stopping=edge_early_stopping)
+
+            print(f"% Batch ({batch_idx+1}/{len(train_data)} in time {time.time() - start_batch} ")
             print("-----------------------")
 
         node_loss_cum /= ((stop_era - init_era) * explored_batches)
