@@ -1,3 +1,6 @@
+import logging
+
+
 import numpy               as np
 import matplotlib.pyplot   as plt
 import torch.nn.functional as F
@@ -12,7 +15,8 @@ import yaml
 
 from torch_geometric.data          import Data, Batch
 from torch.nn                      import Linear
-from torch_geometric.nn            import GraphConv
+from torch_geometric.nn            import GraphConv, GraphNorm
+
 from torch_geometric.utils.convert import to_networkx
 
 # Checking if pytorch can run in GPU, else CPU
@@ -156,9 +160,12 @@ def get_random_graph(n_nodes, n_features, in_edge_index=None):
     else:
         # Clone edge indexes
         edge_index = torch.clone(in_edge_index)
-
+    
+    #TODO: remove
+    torch.manual_seed(12345)
     # Generate random node features
     x = torch.randn(n_nodes, n_features)
+    torch.seed()
 
     # Get number of edges
     n_edges = torch.Tensor.size(edge_index)[1]
@@ -170,7 +177,6 @@ def get_random_graph(n_nodes, n_features, in_edge_index=None):
     graph = Data(x=x,
                  edge_index=edge_index,
                  edge_attr=edge_attr)
-
     # Moving data to device
     graph = graph.to(device)
     return graph
@@ -208,6 +214,7 @@ def diffuse_t_steps(batch_0, t_step, n_t_steps, alpha_decay, n_features=None):
     # Forward pass
     batch_t.x[:, :n_features] = alpha_t * batch_t.x[:, :n_features] + sigma_t * epsilon_t.x
     batch_t.edge_attr         = alpha_t * batch_t.edge_attr         + sigma_t * epsilon_t.edge_attr
+
     return batch_t, epsilon_t
 
 
@@ -365,7 +372,7 @@ class nGCNN(torch.nn.Module):
         self.conv4 = GraphConv(256, n_node_features)  # Predict all node features at once
 
         # Normalization helps model stability
-        self.norm1 = torch.nn.BatchNorm1d(256, track_running_stats=False)
+        self.norm1 = GraphNorm(256)
 
         self.pdropout = pdropout
 
@@ -405,7 +412,7 @@ class eGCNN(nn.Module):
         self.linear4 = Linear(64, 1)  # Predicting one single weight
 
         # Normalization helps model stability
-        self.norm1 = torch.nn.BatchNorm1d(64, track_running_stats=False)
+        self.norm1 = GraphNorm(64)
         
         self.pdropout = pdropout
 
@@ -665,7 +672,7 @@ class DenoisingModel():
         self.node_model = node_model
         self.edge_model = edge_model
 
-    def train(self, train_data, val_data, exp_name, val_jump=5):
+    def train(self, train_data, val_data, exp_name, val_jump=5, train_specific_step=None):
         """
         Train the denoising model using the provided data
 
@@ -679,10 +686,18 @@ class DenoisingModel():
             Name of the experiment directory
         val_jump : int
             Interval between epochs to perform validation
+        train_specific_step : int, optional
+            If provided, train the model only for the specific time step
         """
         # Create the experiment directory
         if not os.path.exists(exp_name):
             os.makedirs(exp_name)
+
+        # Step 1: Set up the logger
+        logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s', filename=os.path.join(exp_name, "loss.log"), filemode='w')
+
+        # Step 2: Create a logger object
+        self.logger = logging.getLogger()
 
         # Initialize the optimizers
         node_optimizer = torch.optim.Adam(self.node_model.parameters(), lr=self.learning_rate)
@@ -710,7 +725,7 @@ class DenoisingModel():
             self.ground_truth = {k: [] for k in self.node_attributes}
             self.prediction   = {k: [] for k in self.node_attributes}
 
-            node_train_loss, edge_train_loss = self.train_epoch(train_data, node_optimizer, edge_optimizer, node_early_stopping, edge_early_stopping)
+            node_train_loss, edge_train_loss = self.train_epoch(train_data, node_optimizer, edge_optimizer, node_early_stopping, edge_early_stopping, train_specific_step)
                         
             node_train_losses.append(node_train_loss)
             edge_train_losses.append(edge_train_loss)
@@ -727,7 +742,7 @@ class DenoisingModel():
 
             print_node_loss = ' '.join([f'{node_loss:.4f}' for node_loss in node_train_loss])
             print(f'Epoch: {epoch+1}, edge loss: {edge_train_loss:.4f}, node loss: {print_node_loss}. Time elapsed: {time.time()-start:.2f} seconds')
-
+        """ #TODO: uncomment
             # Perform validation every N epoch
             if not (epoch+1) % val_jump:
                 node_val_loss, edge_val_loss, node_val_loss_per_t_step, edge_val_loss_per_t_step = self.eval(val_data)
@@ -744,8 +759,9 @@ class DenoisingModel():
 
         # Plot losses
         self.plot_losses(node_train_losses, edge_train_losses, node_val_losses, edge_val_losses, exp_name)
+        """
 
-    def eval(self, val_data, time_step_jump=20):
+    def eval(self, val_data, time_step_jump=10):
         """
         Evaluate the model using the provided validation data
 
@@ -781,13 +797,15 @@ class DenoisingModel():
         self.edge_model.eval()
         start = time.time()
         # Perform validation
+        explored_batches = 0
         with torch.no_grad():
             for batch_idx, batch_0 in enumerate(val_data):
                 # Check loss at each time step
+                explored_batches += 1
                 n_steps_checked = 0
-                for t_step in range(1,self.n_t_steps,time_step_jump):
+                for t_step in range(1,self.n_t_steps,time_step_jump): #TODO: change 2 to self.n_t_steps
                     g_batch_0 = batch_0.clone().to(self.device)
-                    t_step_std =  t_step / self.n_t_steps - 0
+                    t_step_std =  t_step / self.n_t_steps - 0.5
                     g_batch_t, e_batch_t = diffuse_t_steps(g_batch_0, t_step, self.n_t_steps, self.alpha_decay, n_features=self.n_node_features)
                     g_batch_t.x[:, -1] = t_step_std
             
@@ -812,35 +830,58 @@ class DenoisingModel():
         if type(self.n_t_steps) == torch.Tensor:
             self.n_t_steps = self.n_t_steps.item()
 
-        node_test_losses /=  (len(val_data) * n_steps_checked)
-        edge_test_losses /= (len(val_data) * n_steps_checked)
+        node_test_losses /=  (explored_batches * n_steps_checked)
+        edge_test_losses /= (explored_batches * n_steps_checked)
 
         print_node_loss = ' '.join([f'{node_loss:.4f}' for node_loss in node_test_losses])
         print(f'Validation losses: edge loss: {edge_test_losses:.4f}, node loss: {print_node_loss}. Time elapsed: {time.time()-start:.2f} seconds')
 
         return node_test_losses, edge_test_losses, node_test_losses_per_t_step, edge_test_losses_per_t_step
 
-    def train_epoch(self, train_data, node_optimizer, edge_optimizer, node_early_stopping, edge_early_stopping):
+    def train_epoch(self, train_data, node_optimizer, edge_optimizer, node_early_stopping, edge_early_stopping, train_specific_step=None):
         """Train the model for one epoch."""
-        explored_samples = 0
+        explored_batches = 0
 
         edge_loss_cum = 0
         node_loss_cum = np.zeros(self.n_node_features, dtype=float)
 
         for batch_idx, batch_0 in enumerate(train_data):
+            if batch_idx == 1: #TODO: remove to use all data
+                break
             g_batch_0 = batch_0.clone().to(self.device)
-            explored_samples += len(g_batch_0)
-            for _ in range(self.n_eras):
+           
+            # Repeat the batch 2^N times
+            if self.n_repeat > 1:
+                for _ in range(self.n_repeat):
+                    # Repeat each element in g_batch_0 (this could be node features, edge indices, etc.)
+                    g_batch_0.x = torch.cat([g_batch_0.x, g_batch_0.x], dim=0)  # Repeat node features
+                    g_batch_0.edge_index = torch.cat([g_batch_0.edge_index, g_batch_0.edge_index], dim=1)  # Repeat edge indices
+                    g_batch_0.edge_attr = torch.cat([g_batch_0.edge_attr, g_batch_0.edge_attr], dim=0) if g_batch_0.edge_attr is not None else None  # Repeat edge attributes
+                    g_batch_0.batch = torch.cat([g_batch_0.batch, g_batch_0.batch + g_batch_0.x.size(0)], dim=0)  # Adjust the batch assignment
+
+               
+            explored_batches += 1 
+
+            # Train for a specific time step if required
+            if train_specific_step is not None:
+                init_era = train_specific_step
+                stop_era = train_specific_step + 1
+            else:
+                init_era = 0
+                stop_era = self.n_eras
+
+            for era in range(init_era, stop_era):
                 # Randomly sample a time step and normalize it
                 t_step = torch.randint(0, self.n_t_steps, (1,))[0]
+                #t_step = era #TODO: remove
                 t_step_std =  t_step / self.n_t_steps - 0.5
 
                 node_optimizer.zero_grad()
                 edge_optimizer.zero_grad()
 
                 g_batch_t, e_batch_t = diffuse_t_steps(g_batch_0, t_step, self.n_t_steps, self.alpha_decay, n_features=self.n_node_features)
-                g_batch_t.x[:, -1] = t_step_std
-           
+                g_batch_t.x[:, -1] = t_step_std #add time step to the last feature
+            
                 pred_epsilon_t = predict_noise(g_batch_t, self.node_model, self.edge_model)
 
                 # Calculate the losses for node features and edge attributes
@@ -849,14 +890,16 @@ class DenoisingModel():
                 # Combine losses for each attribute tensors
                 node_loss = torch.stack(node_losses).sum()
 
+                self.logger.info(f"Era: {era}, " + "edge_loss:" + f"{edge_loss.item()}" +  "," + "node_losses:" + ",".join(f"{loss.item()}" for loss in node_losses))  # TODO: remove if not required
                 node_loss_cum += np.array([loss.item() for loss in node_losses])
                 edge_loss_cum += edge_loss.item()
                 
                 self.optimize(node_loss, node_optimizer, self.node_model, max_norm=2.0, early_stopping=node_early_stopping)
                 self.optimize(edge_loss, edge_optimizer, self.edge_model, max_norm=2.0, early_stopping=edge_early_stopping)
+            print("-----------------------")
 
-        node_loss_cum /= (self.n_eras * len(train_data))
-        edge_loss_cum /= (self.n_eras * len(train_data))  
+        node_loss_cum /= ((stop_era - init_era) * explored_batches)
+        edge_loss_cum /= ((stop_era - init_era) * explored_batches)  
        
         return node_loss_cum, edge_loss_cum
     

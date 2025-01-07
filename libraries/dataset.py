@@ -93,17 +93,61 @@ def standardize_dataset(dataset_path, dest, transformation=None):
     
     # Transform edge attributes
     print("Transforming edge attributes...")
+    """
     target_mean = torch.zeros(n_y)
     for target_index in range(n_y):
         target_mean[target_index] = sum([data.y[target_index] for data in train_dataset_std]) / n_graphs
-    
-    edge_mean = sum([data.edge_attr.mean() for data in train_dataset_std]) / n_graphs
-    
+
+
     target_std = torch.zeros(n_y)
     for target_index in range(n_y):
         target_std[target_index] = torch.sqrt(sum([(data.y[target_index] - target_mean[target_index]).pow(2).sum() for data in train_dataset_std]) / (n_graphs * (n_graphs - 1)))
-    
+    """
+    # Compute total mean for target attributes (y)
+    target_sum = torch.zeros(n_y)  # Accumulator for target sums
+    total_target_count = 0  # Total count of target entries
+
+    for data in train_dataset_std:
+        target_sum += data.y.sum(dim=0)  # Accumulate target values across all graphs
+        total_target_count += data.y.shape[0]  # Count the number of entries in y
+
+    target_mean = target_sum / total_target_count  # Compute global mean for each target attribute
+
+
+    # Compute total standard deviation for target attributes (y)
+    target_sum = torch.zeros(n_y)  # Accumulator for target sums
+    total_target_count = 0  # Total count of target entries
+
+    for data in train_dataset_std:
+        target_sum += data.y.sum(dim=0)  # Accumulate target values across all graphs
+        total_target_count += data.y.shape[0]  # Count the number of entries in y
+
+    target_mean = target_sum / total_target_count  # Compute global mean for each target attribute
+
+    # Compute variance and standard deviation
+    target_variance = torch.zeros(n_y)
+    for data in train_dataset_std:
+        target_variance += ((data.y - target_mean).pow(2)).sum(dim=0)  # Accumulate squared deviations
+
+    target_variance /= total_target_count  # Divide by total count to get variance
+    target_std = torch.sqrt(target_variance)  # Compute standard deviation
+
+    """    
+    edge_mean = sum([data.edge_attr.mean() for data in train_dataset_std]) / n_graphs
     edge_std = torch.sqrt(sum([(data.edge_attr - edge_mean).pow(2).sum() for data in train_dataset_std]) / (n_graphs * (n_graphs - 1)))
+    """
+
+    edge_sum = 0
+    total_edge_count = 0
+
+    for data in train_dataset_std:
+        edge_sum += data.edge_attr.sum()  # Sum all edge attributes
+        total_edge_count += data.edge_attr.numel()  # Add the number of elements in edge_attr
+
+    edge_mean = edge_sum / total_edge_count  # Compute the total mean
+
+    edge_variance = sum([(data.edge_attr - edge_mean).pow(2).sum() for data in train_dataset_std]) / total_edge_count
+    edge_std = torch.sqrt(edge_variance)  # Compute standard deviation
     
     # In case we want to increase the values of the normalization
     scale = torch.tensor(1e0)
@@ -117,8 +161,8 @@ def standardize_dataset(dataset_path, dest, transformation=None):
             data.y         = (data.y         - target_mean) / target_factor
             data.edge_attr = (data.edge_attr - edge_mean)   / edge_factor
 
+    """
     # Transform node attributes
-
     feat_mean = torch.zeros(n_features)
     feat_std  = torch.zeros(n_features)
     print("Transforming node attributes...")
@@ -138,6 +182,33 @@ def standardize_dataset(dataset_path, dest, transformation=None):
         # Append corresponing values for saving
         feat_mean[feat_index] = temp_feat_mean
         feat_std[feat_index]  = temp_feat_std
+    """
+    print("Transforming node attributes...")
+    # Initialize accumulators for global mean and standard deviation
+    feat_sum = torch.zeros(n_features)  # Accumulator for feature sums
+    total_feat_count = torch.zeros(n_features)  # Accumulator for the total count of each feature
+
+    # Compute global mean
+    for data in train_dataset_std:
+        feat_sum += data.x.sum(dim=0)  # Sum node features for each feature index
+        total_feat_count += torch.tensor([data.x[:, i].numel() for i in range(n_features)])  # Count the number of nodes for each feature
+
+    feat_mean = feat_sum / total_feat_count  # Compute global mean for each feature
+
+    # Compute global standard deviation
+    feat_variance = torch.zeros(n_features)
+    for data in train_dataset_std:
+        feat_variance += ((data.x - feat_mean).pow(2)).sum(dim=0)  # Accumulate squared deviations for each feature
+
+    feat_variance /= total_feat_count  # Divide by total count for variance
+    feat_std = torch.sqrt(feat_variance)  # Compute standard deviation
+
+    # Normalize features for all datasets
+    for dataset in [train_dataset_std, val_dataset_std, test_dataset_std]:
+        print(f"Transforming {len(dataset)} graphs...")
+        for data in dataset:
+            data.x = (data.x - feat_mean) / feat_std  # Apply normalization
+
 
    
 

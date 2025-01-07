@@ -33,7 +33,7 @@ class MPStandardizedDataloader():
         Whether to pin memory for the dataloader.
     """
 
-    def __init__(self, data_path, batch_size, shuffle=True, num_workers=0, pin_memory=True):
+    def __init__(self, data_path, batch_size, shuffle=True, num_workers=0, pin_memory=True, transformation=None):
         self.data_path = data_path
         self.batch_size = batch_size
         self.shuffle = shuffle
@@ -47,11 +47,11 @@ class MPStandardizedDataloader():
         # Check if the standardized dataset files exist, if not, standardize the dataset
         if not os.path.exists(self.dataset_name) or not os.path.exists(self.dataset_parameters_name) or not os.path.exists(self.labels_name):
             print("Standardized dataset files not found. Standardizing dataset...")
-            standardize_dataset(self.data_path, self.data_path, transformation="inverse-quadratic")
+            standardize_dataset(self.data_path, self.data_path, transformation=transformation)
 
         with open(self.dataset_parameters_name, 'r') as json_file:
             numpy_dict = json.load(json_file)
-        
+
         # Convert NumPy arrays back to PyTorch tensors
         self.dataset_parameters = {}
         for key, value in numpy_dict.items():
@@ -123,8 +123,8 @@ class MPStandardizedDataloader():
         test_dataset = test_dataset[:int(test_portion*len(test_dataset))]
 
         # Create the dataloaders
-        train_loader = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True, num_workers=0, pin_memory=True)
-        val_loader   = DataLoader(val_dataset,   batch_size=self.batch_size, shuffle=True, num_workers=0, pin_memory=True)
-        test_loader  = DataLoader(test_dataset,  batch_size=self.batch_size, shuffle=True, num_workers=0, pin_memory=True)
+        train_loader = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=self.shuffle, num_workers=0, pin_memory=self.pin_memory)
+        val_loader   = DataLoader(val_dataset,   batch_size=self.batch_size, shuffle=self.shuffle, num_workers=0, pin_memory=self.pin_memory)
+        test_loader  = DataLoader(test_dataset,  batch_size=self.batch_size, shuffle=self.shuffle, num_workers=0, pin_memory=self.pin_memory)
 
         return train_loader, val_loader, test_loader

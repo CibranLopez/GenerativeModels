@@ -27,6 +27,7 @@ def main():
     parser.add_argument("--train-portion", type=float, default=0.1, help="Portion of subset to be used for training.")
     parser.add_argument("--valid-portion", type=float, default=1, help="Portion of subset to be used for validation.")
     parser.add_argument("--test-portion", type=float, default=1, help="Portion of subset to be used for testing.")
+    parser.add_argument("--train-specific-step", type=int, default=None, help="Train the model for a specific step.")
     
     # Parse the arguments
     args = parser.parse_args()
@@ -53,7 +54,7 @@ def main():
     
     # Train the model
     start = time.time()
-    model.train(train_dataloader, val_dataloader, exp_name=args.dest_path, val_jump=10)
+    model.train(train_dataloader, val_dataloader, exp_name=args.dest_path, train_specific_step=args.train_specific_step, val_jump=1000000, ) #set val_jump to something else
     end = time.time()
     print("Training time:", end - start)
 
