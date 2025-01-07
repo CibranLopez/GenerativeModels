@@ -320,30 +320,47 @@ class GNN(torch.nn.Module):
     Alternately updates node and edge embeddings after each convolutional layer.
     """
 
-    def __init__(self, n_node_features, n_graph_features, pdropout):
+    def __init__(self, n_node_features, n_graph_features, pdropout_node, pdropout_edge):
         super(GNN, self).__init__()
 
         torch.manual_seed(12345)
 
+        neurons_n_1 = 256
+        neurons_n_2 = 256
+        neurons_n_3 = 256
+
+        neurons_e_1 = 128
+        neurons_e_2 = 256
+        neurons_e_3 = 256
+        neurons_e_4 = 64
+
         # Node update layers (GraphConv)
-        self.node_conv1 = GraphConv(n_node_features + n_graph_features, 256)
-        self.node_conv2 = GraphConv(256, 512)
-        self.node_conv3 = GraphConv(512, 256)
-        self.node_conv4 = GraphConv(256, n_node_features)
+        self.node_conv1 = GraphConv(n_node_features + n_graph_features, neurons_n_1)
+        self.node_conv2 = GraphConv(neurons_n_1, neurons_n_2)
+        self.node_conv3 = GraphConv(neurons_n_2, neurons_n_3)
+        self.node_conv4 = GraphConv(neurons_n_3, n_node_features)
 
         # Edge update layers (Linear)
-        self.edge_linear1 = Linear(n_node_features + n_graph_features + 1, 128)
-        self.edge_linear2 = Linear(128, 256)
-        self.edge_linear3 = Linear(256, 64)
-        self.edge_linear4 = Linear(64, 1)
+        self.edge_linear_f1 = Linear(n_node_features+n_graph_features+1, neurons_e_1)  # From ini to multi
+        self.edge_linear_r1 = Linear(neurons_e_1, 1)  # From multi to 1
 
+        self.edge_linear_f2 = Linear(neurons_n_1+1, neurons_e_2)  # From ini to multi
+        self.edge_linear_r2 = Linear(neurons_e_2, 1)  # From multi to 1
+
+        self.edge_linear_f3 = Linear(neurons_n_2+1, neurons_e_3)  # From ini to multi
+        self.edge_linear_r3 = Linear(neurons_e_3, 1)  # From multi to 1
+
+        self.edge_linear_f4 = Linear(neurons_n_3+1, neurons_e_4)  # From ini to multi
+        self.edge_linear_r4 = Linear(neurons_e_4, 1)  # From multi to 1
+        
         # Normalization layers
         self.node_norm1 = torch.nn.BatchNorm1d(256)
         self.edge_norm1 = torch.nn.BatchNorm1d(64)
 
-        self.pdropout = pdropout
+        self.pdropout_node = pdropout_node
+        self.pdropout_edge = pdropout_edge
 
-    def forward(self, batch, graph_features):
+    def forward(self, batch):
         """
         Perform forward propagation alternately updating nodes and edges.
 
@@ -356,23 +373,27 @@ class GNN(torch.nn.Module):
         """
 
         # Update 1
-        batch.x         = self.node_forward(batch, self.node_conv1)
-        batch.edge_attr = self.edge_forward(batch, self.edge_linear1)
+        x         = self.node_forward(batch, self.node_conv1)
+        edge_attr = self.edge_forward(batch, self.edge_linear_f1, self.edge_linear_r1)
+        batch.x, batch.edge_attr = x, edge_attr
 
         # Update 2
-        batch.x         = self.node_forward(batch, self.node_conv2)
-        batch.edge_attr = self.edge_forward(batch, self.edge_linear2)
+        x         = self.node_forward(batch, self.node_conv2)
+        edge_attr = self.edge_forward(batch, self.edge_linear_f2, self.edge_linear_r2)
+        batch.x, batch.edge_attr = x, edge_attr
 
         # Update 3
-        batch.x         = self.node_forward(batch, self.node_conv3)
-        batch.edge_attr = self.edge_forward(batch, self.edge_linear3)
+        x         = self.node_forward(batch, self.node_conv3)
+        edge_attr = self.edge_forward(batch, self.edge_linear_f3, self.edge_linear_r3)
+        batch.x, batch.edge_attr = x, edge_attr
 
         # Update 4
-        batch.x         = self.node_forward(batch, self.node_conv4)
-        batch.edge_attr = self.edge_forward(batch, self.edge_linear4)
+        x         = self.node_forward(batch, self.node_conv4, activation_function=False)
+        edge_attr = self.edge_forward(batch, self.edge_linear_f4, self.edge_linear_r4)
+        batch.x, batch.edge_attr = x, edge_attr
         return batch
 
-    def node_forward(self, batch, node_conv):
+    def node_forward(self, batch, node_conv, activation_function=True):
         """
         Update node embeddings using the current node features and edge attributes.
 
@@ -387,16 +408,18 @@ class GNN(torch.nn.Module):
         x, edge_index, edge_attr = batch.x, batch.edge_index, batch.edge_attr
 
         x = node_conv(x, edge_index, edge_attr)
-        x = x.relu()
+        if activation_function:
+            x = x.relu()
         return x
 
-    def edge_forward(self, batch, edge_linear):
+    def edge_forward(self, batch, edge_linear_forward, edge_linear_reverse):
         """
         Update edge attributes using the current node features and edge attributes.
 
         Args:
             batch: Batch object containing x, edge_index, and edge_attr.
-            edge_linear: Linear layer for edge attribute prediction.
+            edge_linear: Linear layer for edge attribute prediction in multi-dimensional space.
+            edge_linear_reverse: Move back to 1-dimensional edge attributes.
 
         Returns:
             Updated edge attributes.
@@ -422,7 +445,9 @@ class GNN(torch.nn.Module):
         edge_attr = torch.cat((edge_attr, previous_attr), dim=1)
 
         # Apply linear convolution with ReLU activation function
-        edge_attr = edge_linear(edge_attr).ravel()
+        edge_attr = edge_linear_forward(edge_attr)
+        edge_attr = edge_attr.relu()
+        edge_attr = edge_linear_reverse(edge_attr).ravel()
         return edge_attr
 
 
