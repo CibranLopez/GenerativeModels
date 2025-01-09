@@ -4,8 +4,8 @@ import itertools
 import sys
 
 from pymatgen.core.structure import Structure
-from scipy.spatial           import Voronoi
-from rdkit                   import Chem
+from scipy.spatial import Voronoi
+from rdkit import Chem
 
 # Checking if pytorch can run in GPU, else CPU
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')

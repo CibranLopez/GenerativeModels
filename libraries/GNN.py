@@ -1,9 +1,9 @@
-import numpy               as np
-import matplotlib.pyplot   as plt
-import matplotlib.patches  as patches
-import matplotlib.cm       as cm
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.patches as patches
+import matplotlib.cm as cm
 import torch.nn.functional as F
-import pandas              as pd
+import pandas as pd
 import sys
 import re
 import torch
@@ -11,8 +11,8 @@ import yaml
 import collections
 import os
 
-from matplotlib.colors  import Normalize
-from torch.nn           import Linear
+from matplotlib.colors import Normalize
+from torch.nn import Linear
 from torch_geometric.nn import GraphConv
 from torch_geometric.nn import global_mean_pool
 

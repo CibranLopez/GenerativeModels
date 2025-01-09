@@ -1,5 +1,5 @@
 n_eras: 1000
-n_epochs: 10000
+n_epochs: 20
 learning_rate: 0.0001
 patience: 1000
 delta: 0.2

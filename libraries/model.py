@@ -1,6 +1,6 @@
 import logging
 
-
+import gc
 import numpy               as np
 import matplotlib.pyplot   as plt
 import torch.nn.functional as F
@@ -164,9 +164,9 @@ def get_random_graph(n_nodes, n_features, in_edge_index=None):
     #TODO: remove
     #torch.manual_seed(12345)
     # Generate random node features
-    torch.seed()
+    #torch.seed()
     x = torch.randn(n_nodes, n_features)
-    torch.seed()
+    #torch.seed()
 
     # Get number of edges
     n_edges = torch.Tensor.size(edge_index)[1]
@@ -363,7 +363,7 @@ class nGCNN(torch.nn.Module):
         super(nGCNN, self).__init__()
 
         # Set random seed for reproducibility
-        torch.manual_seed(12345)
+        #torch.manual_seed(12345) #TODO: make sure it does not affect other parts of the code
 
         # Define graph convolution layers
         # Introducing graph features
@@ -376,6 +376,9 @@ class nGCNN(torch.nn.Module):
         self.norm1 = GraphNorm(256)
 
         self.pdropout = pdropout
+
+        # Set random seed again
+        #torch.seed()
 
     def forward(self, x, edge_index, edge_attr):
         # Apply graph convolution with ReLU activation function
@@ -403,8 +406,7 @@ class eGCNN(nn.Module):
         super(eGCNN, self).__init__()
 
         # Set random seed for reproducibility
-        torch.manual_seed(12345)
-
+        #torch.manual_seed(12345) #TODO: make sure it does not affect other parts of the code
         # Define linear convolution layers
         # Introducing node features + previous edge attribute
         self.linear1 = Linear(n_node_features+n_graph_features+1, 128)
@@ -419,6 +421,7 @@ class eGCNN(nn.Module):
 
     def forward(self, x_i, x_j, previous_attr):
         # Dot product between node distances
+
         x_i = torch.cat((torch.pow(x_i[:, :-1] - x_j[:, :-1], 2), x_i[:, -1:]), dim=1)  # Of dimension [..., features_channels]
         
         # Reshape previous_attr tensor to have the same number of dimensions as x
@@ -457,7 +460,7 @@ class line_eGCNN(nn.Module):
         super(line_eGCNN, self).__init__()
 
         # Set random seed for reproducibility
-        torch.manual_seed(12345)
+        #torch.manual_seed(12345)  #TODO: make sure it does not affect other parts of the code
 
         self.linear1 = Linear(n_node_features + n_graph_features + 1,
                               128)  # Introducing node features + previous edge attribute
@@ -807,7 +810,6 @@ class DenoisingModel():
                     t_step_std =  t_step / self.n_t_steps - 0.5
                     g_batch_t, e_batch_t = diffuse_t_steps(g_batch_0, t_step, self.n_t_steps, self.alpha_decay, n_features=self.n_node_features)
                     g_batch_t.x[:, -1] = t_step_std
-            
                     pred_epsilon_t = predict_noise(g_batch_t, self.node_model, self.edge_model)
 
                     # Calculate the losses for node features and edge attributes
@@ -858,7 +860,6 @@ class DenoisingModel():
                     g_batch_0.edge_attr = torch.cat([g_batch_0.edge_attr, g_batch_0.edge_attr], dim=0) if g_batch_0.edge_attr is not None else None  # Repeat edge attributes
                     g_batch_0.batch = torch.cat([g_batch_0.batch, g_batch_0.batch + g_batch_0.x.size(0)], dim=0)  # Adjust the batch assignment
 
-               
             explored_batches += 1 
 
             # Train for a specific time step if required
@@ -889,12 +890,21 @@ class DenoisingModel():
                 # Combine losses for each attribute tensors
                 node_loss = torch.stack(node_losses).sum()
 
-                self.logger.info(f"Era: {era}, " + "edge_loss:" + f"{edge_loss.item()}" +  "," + "node_losses:" + ",".join(f"{loss.item()}" for loss in node_losses))  # TODO: remove if not required
-                node_loss_cum += np.array([loss.item() for loss in node_losses])
-                edge_loss_cum += edge_loss.item()
-                
                 self.optimize(node_loss, node_optimizer, self.node_model, max_norm=2.0, early_stopping=node_early_stopping)
                 self.optimize(edge_loss, edge_optimizer, self.edge_model, max_norm=2.0, early_stopping=edge_early_stopping)
+
+                #self.logger.info(f"Era: {era}, " + "edge_loss:" + f"{edge_loss.item()}" +  "," + "node_losses:" + ",".join(f"{loss.item()}" for loss in node_losses))  # TODO: remove if not required
+                print(f"Era: {era}, " + "edge_loss:" + f"{edge_loss.item()}" +  "," + "node_losses:" + ",".join(f"{loss.item()}" for loss in node_losses))  # TODO: remove if not required
+
+                node_loss_cum += np.array([loss.item() for loss in node_losses])
+                edge_loss_cum += edge_loss.item()
+
+                # Empty memory
+                del node_losses, node_loss, edge_loss, pred_epsilon_t, g_batch_t, e_batch_t
+                gc.collect()
+                torch.cuda.empty_cache()
+            
+            del g_batch_0
 
             print(f"% Batch ({batch_idx+1}/{len(train_data)} in time {time.time() - start_batch} ")
             print("-----------------------")
@@ -912,7 +922,7 @@ class DenoisingModel():
     def optimize(self, loss, optimizer, model, max_norm, early_stopping):
         """Optimize a given loss."""
         if not early_stopping.early_stop:
-            loss.backward(retain_graph=True)
+            loss.backward(retain_graph=False)
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=max_norm)
             optimizer.step()
 
