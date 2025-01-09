@@ -284,7 +284,7 @@ def denoise(batch_t, n_t_steps, alpha_decay, model, plot_steps=False, n_features
 
         # Stack time step across batch dimension
         batch_s.x[:, -1] = t_step_std
-
+        print(batch_s.shape())
         # Predict batch noise at given time step
         pred_epsilon_t = predict_noise(batch_s, model)
         
@@ -325,31 +325,31 @@ class GNN(torch.nn.Module):
 
         neurons_n_1 = 128
         neurons_n_2 = 256
-        neurons_n_3 = 64
+        #neurons_n_3 = 64
 
-        neurons_e_1 = 64
-        neurons_e_2 = 128
-        neurons_e_3 = 64
-        neurons_e_4 = 32
+        neurons_e_1 = 128
+        neurons_e_2 = 256
+        neurons_e_3 = 256
+        #neurons_e_4 = 32
 
         # Node update layers (GraphConv)
-        self.node_conv1 = GraphConv(n_node_features + n_graph_features, neurons_n_1)
+        self.node_conv1 = GraphConv(n_node_features+n_graph_features+1, neurons_n_1)
         self.node_conv2 = GraphConv(neurons_n_1, neurons_n_2)
-        self.node_conv3 = GraphConv(neurons_n_2, neurons_n_3)
-        self.node_conv4 = GraphConv(neurons_n_3, n_node_features)
+        self.node_conv3 = GraphConv(neurons_n_2, n_node_features)
+        #self.node_conv4 = GraphConv(neurons_n_3, n_node_features)
 
         # Edge update layers (Linear)
-        self.edge_linear_f1 = Linear(n_node_features+n_graph_features+1, neurons_e_1)  # From ini to multi
+        self.edge_linear_f1 = Linear(2*(n_node_features+n_graph_features+1)+1, neurons_e_1)  # From ini to multi
         self.edge_linear_r1 = Linear(neurons_e_1, 1)  # From multi to 1
 
-        self.edge_linear_f2 = Linear(neurons_n_1+1, neurons_e_2)  # From ini to multi
+        self.edge_linear_f2 = Linear(2*neurons_n_1+1, neurons_e_2)  # From ini to multi
         self.edge_linear_r2 = Linear(neurons_e_2, 1)  # From multi to 1
 
-        self.edge_linear_f3 = Linear(neurons_n_2+1, neurons_e_3)  # From ini to multi
+        self.edge_linear_f3 = Linear(2*neurons_n_2+1, neurons_e_3)  # From ini to multi
         self.edge_linear_r3 = Linear(neurons_e_3, 1)  # From multi to 1
 
-        self.edge_linear_f4 = Linear(neurons_n_3+1, neurons_e_4)  # From ini to multi
-        self.edge_linear_r4 = Linear(neurons_e_4, 1)  # From multi to 1
+        #self.edge_linear_f4 = Linear(neurons_n_3+1, neurons_e_4)  # From ini to multi
+        #self.edge_linear_r4 = Linear(neurons_e_4, 1)  # From multi to 1
         
         # Normalization layers
         self.node_norm1 = torch.nn.BatchNorm1d(256)
@@ -381,13 +381,8 @@ class GNN(torch.nn.Module):
         batch.x, batch.edge_attr = x, edge_attr
 
         # Update 3
-        x         = self.node_forward(batch, self.node_conv3)
+        x         = self.node_forward(batch, self.node_conv3, activation_function=False)
         edge_attr = self.edge_forward(batch, self.edge_linear_f3, self.edge_linear_r3)
-        batch.x, batch.edge_attr = x, edge_attr
-
-        # Update 4
-        x         = self.node_forward(batch, self.node_conv4, activation_function=False)
-        edge_attr = self.edge_forward(batch, self.edge_linear_f4, self.edge_linear_r4)
         batch.x, batch.edge_attr = x, edge_attr
         return batch
 
@@ -433,11 +428,11 @@ class GNN(torch.nn.Module):
         previous_attr = edge_attr.view(-1, 1)  # Reshapes from [...] to [..., 1]
 
         # Calculate squared distance between node features
-        x_diff = torch.pow(x_i[:, :-1] - x_j[:, :-1], 2)
-
-        # Concatenate node differences, edge attributes, and graph features
-        edge_attr = torch.cat((x_diff, x_i[:, -1:]),
-                              dim=1)  # Of dimension [..., features_channels]
+        edge_attr = torch.cat((x_i, x_j), dim=1)
+        
+        ## Concatenate node differences, edge attributes, and graph features
+        #edge_attr = torch.cat((x_cat, x_i[:, -1:]),
+        #                      dim=1)  # Of dimension [..., features_channels]
 
         # Concatenate the tensors along dimension 1 to get a tensor of size [..., num_embeddings ~ 6]
         edge_attr = torch.cat((edge_attr, previous_attr), dim=1)
