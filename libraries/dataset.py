@@ -27,7 +27,7 @@ def check_finite_attributes(data):
     return True
 
 
-def standardize_dataset(dataset, labels, transformation=None):
+def standardize_dataset(dataset, transformation=None, scale=1e0):
     """Standardizes a given dataset (both nodes features and edge attributes).
     Typically, a normal distribution is applied, although it be easily modified to apply other distributions.
     Check those graphs with finite attributes and retains labels accordingly.
@@ -36,23 +36,16 @@ def standardize_dataset(dataset, labels, transformation=None):
 
     Args:
         dataset        (list): List containing graph structures.
-        labels         (list): List containing graph labels.
         transformation (str):  Type of transformation strategy for edge attributes (None, 'inverse-quadratic').
 
     Returns:
         Tuple: A tuple containing the normalized dataset and parameters needed to re-scale predicted properties.
             - dataset_std        (list): Normalized dataset.
-            - labels_std         (list): Labels from valid graphs.
             - dataset_parameters (dict): Parameters needed to re-scale predicted properties from the dataset.
     """
 
     # Clone the dataset and labels
-    dataset_std = []
-    labels_std  = []
-    for graph, label in zip(dataset, labels):
-        if check_finite_attributes(graph):
-            dataset_std.append(graph.clone())
-            labels_std.append(label)
+    dataset_std = [graph.clone() for graph in dataset if check_finite_attributes(graph)]
 
     # Number of graphs
     n_graphs = len(dataset_std)
@@ -83,7 +76,7 @@ def standardize_dataset(dataset, labels, transformation=None):
     edge_std = torch.sqrt(sum([(data.edge_attr - edge_mean).pow(2).sum() for data in dataset_std]) / (n_graphs * (n_graphs - 1)))
     
     # In case we want to increase the values of the normalization
-    scale = torch.tensor(1e0)
+    scale = torch.tensor(scale)
 
     target_factor = target_std / scale
     edge_factor   = edge_std   / scale
@@ -122,7 +115,7 @@ def standardize_dataset(dataset, labels, transformation=None):
         'feat_std':       feat_std,
         'scale':          scale
     }
-    return dataset_std, labels_std, dataset_parameters
+    return dataset_std, dataset_parameters
 
 
 def revert_standardize_dataset(dataset, dataset_parameters):
@@ -180,20 +173,3 @@ def get_datasets(subset_labels, dataset_labels, dataset):
         if not len(subset_labels):
             break
     return [dataset[idx] for idx in dataset_idxs]
-
-
-def check_extend_POSCAR(structure, minimum_lattice_vector):
-    """Check that POSCAR cell is large enough, otherwise extend it in the direction.
-    A new POSCAR is saved, replacing previous one, which is copied to POSCAR_ini.
-
-    Args:
-        structure              (pymatgen Structure object): Structure from which the graph is to be generated.
-        minimum_lattice_vector (float):                     Minimum length of lattice vectors to be able to perform convolutions.
-    """
-
-    # Get necessary transformation for POSCAR to have valid lengths
-    replication_factor = np.ceil(minimum_lattice_vector / np.linalg.norm(structure.lattice.matrix, axis=1))
-
-    if np.all(replication_factor > 0):
-        structure.make_supercell(replication_factor)
-    return structure
