@@ -19,11 +19,17 @@ from torch_geometric.nn import global_mean_pool
 # Checking if pytorch can run in GPU, else CPU
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-class GCNN(torch.nn.Module):
+class GCNN(
+    torch.nn.Module
+):
     """Graph convolution neural network.
     """
     
-    def __init__(self, features_channels, pdropout):
+    def __init__(
+            self,
+            features_channels,
+            pdropout
+    ):
         """Initializes the Graph Convolutional Neural Network.
 
         Args:
@@ -52,7 +58,13 @@ class GCNN(torch.nn.Module):
         
         self.pdropout = pdropout
 
-    def forward(self, x, edge_index, edge_attr, batch):
+    def forward(
+            self,
+            x,
+            edge_index,
+            edge_attr,
+            batch
+    ):
         ## CONVOLUTION
         
         # Apply graph convolution with ReLU activation function
@@ -80,7 +92,14 @@ class GCNN(torch.nn.Module):
         return x
 
 
-def train(model, criterion, train_loader, target_factor, target_mean, optimizer):
+def train(
+        model,
+        criterion,
+        train_loader,
+        target_factor,
+        target_mean,
+        optimizer
+):
     """Train the model using the provided optimizer and criterion on the training dataset.
 
     Args:
@@ -133,7 +152,13 @@ def train(model, criterion, train_loader, target_factor, target_mean, optimizer)
     return avg_train_loss, all_predictions.cpu().numpy(), all_ground_truths.cpu().numpy()
 
 
-def test(model, criterion, test_loader, target_factor, target_mean):
+def test(
+        model,
+        criterion,
+        test_loader,
+        target_factor,
+        target_mean
+):
     """Evaluate the performance of a given model on a test dataset.
 
     Args:

@@ -11,7 +11,11 @@ from pymatgen.analysis.diffraction.neutron import NDCalculator
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
-def compute_diffraction_pattern(structure, diffraction='x-ray', theta_angles=np.arange(0, 90, 0.1)):
+def compute_diffraction_pattern(
+        structure,
+        diffraction='x-ray',
+        theta_angles=np.arange(0, 90, 0.1)
+):
     """Computes the diffraction pattern of some crystal structure.
     It is implemented for x-ray of neutron diffraction patterns.
 

@@ -15,7 +15,11 @@ from torch_geometric.utils.convert import to_networkx
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
-def get_alpha_t(t_step, n_t_steps, alpha_decay):
+def get_alpha_t(
+        t_step,
+        n_t_steps,
+        alpha_decay
+):
     """Defines constant alpha at time-step t, given a parameter s < 0.5 (else alpha increases).
     
     \\alpha (t) = (1 - 2 s) \\left( 1 - \\left( \\frac{t}{T} \\right)^2 \\right) + s
@@ -36,7 +40,11 @@ def get_alpha_t(t_step, n_t_steps, alpha_decay):
     return (1 - 2 * alpha_decay) * (1 - (t_step / n_t_steps)**2) + alpha_decay
 
 
-def get_sigma_t(t_step, n_t_steps, alpha_decay):
+def get_sigma_t(
+        t_step,
+        n_t_steps,
+        alpha_decay
+):
     """Defines constant sigma at time-step t, given alpha at t.
 
     \\sigma (t) = \\sqrt( 1 - \\alpha^2_t )
@@ -54,7 +62,12 @@ def get_sigma_t(t_step, n_t_steps, alpha_decay):
     return torch.sqrt(1 - alpha_t**2)
 
 
-def get_alpha_t_s(t, s, n_t_steps, alpha_decay):
+def get_alpha_t_s(
+        t,
+        s,
+        n_t_steps,
+        alpha_decay
+):
     """Computes sigma_t over sigma_s.
 
     \\alpha (t, s) = \\alpha_t / \\alpha_s
@@ -75,7 +88,12 @@ def get_alpha_t_s(t, s, n_t_steps, alpha_decay):
     return alpha_t / alpha_s
 
 
-def get_sigma_t_s(t, s, n_t_steps, alpha_decay):
+def get_sigma_t_s(
+        t,
+        s,
+        n_t_steps,
+        alpha_decay
+):
     """Computes sigma_t over sigma_s.
 
     \\sigma (t, s) = \\sqrt( \\sigma^2_t - \\alpha^2_{t,s} \\sigma^2_s )
@@ -97,7 +115,12 @@ def get_sigma_t_s(t, s, n_t_steps, alpha_decay):
     return torch.sqrt(sigma_t**2 - alpha_t_s**2 * sigma_s**2)
 
 
-def get_sigma_t_to_s(t, s, n_t_steps, alpha_decay):
+def get_sigma_t_to_s(
+        t,
+        s,
+        n_t_steps,
+        alpha_decay
+):
     """Computes sigma_t over sigma_s.
 
     \\sigma (t, s) = \\sqrt( \\sigma^2_t - \\alpha^2_{t,s} \\sigma^2_s )
@@ -119,7 +142,11 @@ def get_sigma_t_to_s(t, s, n_t_steps, alpha_decay):
     return sigma_t_s * sigma_s / sigma_t
 
 
-def get_random_graph(n_nodes, n_features, in_edge_index=None):
+def get_random_graph(
+        n_nodes,
+        n_features,
+        in_edge_index=None
+):
     """Generates a random graph with specified number of nodes and features, and attributes. It is assumed
     that all parameters are normally distributed N(0, 1).
 
@@ -173,7 +200,13 @@ def get_random_graph(n_nodes, n_features, in_edge_index=None):
     return graph
 
 
-def diffuse_t_steps(batch_0, t_step, n_t_steps, alpha_decay, n_features=None):
+def diffuse_t_steps(
+        batch_0,
+        t_step,
+        n_t_steps,
+        alpha_decay,
+        n_features=None
+):
     """Performs t forward steps of the diffusive Markov chain.
     
     G (t) = \\alpha (t) G (t-1) + \\sigma (t) N (t)
@@ -181,9 +214,12 @@ def diffuse_t_steps(batch_0, t_step, n_t_steps, alpha_decay, n_features=None):
     with G a graph and N noise. If n_features defined, only the :n_features node features are diffused.
 
     Args:
-        batch_0    (Batch): Batch of graphs to be diffused.
-        alpha_t    (float): Constant which controls how much signal is retained.
-        n_features (int):   Number of node features to be diffused (:n_features).
+        batch_0     (Batch): Batch of graphs to be diffused.
+        t_step      (int):   Step of the diffusion process.
+        n_t_steps   (int):   Total number of steps.
+        alpha_decay (float): parameter which controls the decay of alpha with t.
+        n_features  (int):   Number of node features to be diffused (:n_features).
+
     Returns:
         graph_t (torch_geometric.data.Data): Diffused graph (step t).
     """
@@ -208,7 +244,10 @@ def diffuse_t_steps(batch_0, t_step, n_t_steps, alpha_decay, n_features=None):
     return batch_t, epsilon_t
 
 
-def predict_noise(batch_t, model):
+def predict_noise(
+        batch_t,
+        model
+):
     """Predicts noise given some batch of noisy graphs using specified models.
 
     Args:
@@ -223,7 +262,14 @@ def predict_noise(batch_t, model):
     return model(batch_t)
 
 
-def denoising_step(batch_t, epsilon_t, t_step, n_t_steps, alpha_decay, n_features=None):
+def denoising_step(
+        batch_t,
+        epsilon_t,
+        t_step,
+        n_t_steps,
+        alpha_decay,
+        n_features=None
+):
     """Performs a forward step of a denoising chain.
 
     Args:
@@ -260,7 +306,14 @@ def denoising_step(batch_t, epsilon_t, t_step, n_t_steps, alpha_decay, n_feature
     return batch_s
 
 
-def denoise(batch_t, n_t_steps, alpha_decay, model, plot_steps=False, n_features=None):
+def denoise(
+        batch_t,
+        n_t_steps,
+        alpha_decay,
+        model,
+        plot_steps=False,
+        n_features=None
+):
     """Performs consecutive steps of diffusion in a reference batch of graphs.
 
     Args:
@@ -312,13 +365,21 @@ def denoise(batch_t, n_t_steps, alpha_decay, model, plot_steps=False, n_features
     return batch_s
 
 
-class GNN(torch.nn.Module):
+class GNN(
+    torch.nn.Module
+):
     """
     Combined Graph Convolutional Neural Network for node and edge prediction.
     Alternately updates node and edge embeddings after each convolutional layer.
     """
 
-    def __init__(self, n_node_features, n_graph_features, pdropout_node, pdropout_edge):
+    def __init__(
+            self,
+            n_node_features,
+            n_graph_features,
+            pdropout_node,
+            pdropout_edge
+    ):
         super(GNN, self).__init__()
 
         torch.manual_seed(12345)
@@ -358,7 +419,10 @@ class GNN(torch.nn.Module):
         self.pdropout_node = pdropout_node
         self.pdropout_edge = pdropout_edge
 
-    def forward(self, batch):
+    def forward(
+            self,
+            batch
+    ):
         """
         Perform forward propagation alternately updating nodes and edges.
 
@@ -386,7 +450,12 @@ class GNN(torch.nn.Module):
         batch.x, batch.edge_attr = x, edge_attr
         return batch
 
-    def node_forward(self, batch, node_conv, activation_function=True):
+    def node_forward(
+            self,
+            batch,
+            node_conv,
+            activation_function=True
+    ):
         """
         Update node embeddings using the current node features and edge attributes.
 
@@ -405,7 +474,12 @@ class GNN(torch.nn.Module):
             x = x.relu()
         return x
 
-    def edge_forward(self, batch, edge_linear_forward, edge_linear_reverse):
+    def edge_forward(
+            self,
+            batch,
+            edge_linear_forward,
+            edge_linear_reverse
+    ):
         """
         Update edge attributes using the current node features and edge attributes.
 
@@ -444,7 +518,10 @@ class GNN(torch.nn.Module):
         return edge_attr
 
 
-def get_graph_losses(graph1, graph2):
+def get_graph_losses(
+        graph1,
+        graph2
+):
     """Calculate loss values for node features and edge attributes between two graphs.
     Depending on the size of the graphs, calculating MSE loss directly might be memory-intensive.
     Processing that in batches or subsets of nodes/edges can be more appropriate.
@@ -476,7 +553,10 @@ def get_graph_losses(graph1, graph2):
     return node_losses, edge_loss
 
 
-def add_features_to_graph(graph_0, node_features):
+def add_features_to_graph(
+        graph_0,
+        node_features
+):
     """Include some more information to the node features. The generated graph does not modify the input graph.
 
     Args:
@@ -499,7 +579,9 @@ def add_features_to_graph(graph_0, node_features):
     return graph
 
 
-def interpolate_graphs(dataset):
+def interpolate_graphs(
+        dataset
+):
     """Linearly interpolates a set of graphs.
 
     Args:
@@ -515,7 +597,13 @@ def interpolate_graphs(dataset):
 
 
 class EarlyStopping():
-    def __init__(self, patience=5, delta=0, wandb_run=None, model_name='model.pt'):
+    def __init__(
+            self,
+            patience=5,
+            delta=0,
+            wandb_run=None,
+            model_name='model.pt'
+    ):
         """Initializes the EarlyStopping object. Saves a model if accuracy is improved.
         Declares early_stop = True if training does not improve in patience steps within a delta threshold.
 
@@ -534,7 +622,11 @@ class EarlyStopping():
         self.wandb_run = wandb_run
         self.model_name = model_name
 
-    def __call__(self, val_loss, model):
+    def __call__(
+            self,
+            val_loss,
+            model
+    ):
         """Call method to check and update early stopping.
 
         Args:
@@ -556,7 +648,11 @@ class EarlyStopping():
             self.save_checkpoint(val_loss, model)
             self.counter = 0
 
-    def save_checkpoint(self, val_loss, model):
+    def save_checkpoint(
+            self,
+            val_loss,
+            model
+    ):
         """Save the model checkpoint if the validation loss has decreased.
         It uses model.module, allowing models loaded to nn.DataParallel.
 

@@ -11,230 +11,80 @@ from rdkit                   import Chem
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
-def get_atoms_in_box(particle_types, composition, cell, atomic_masses, charges, electronegativities, ionization_energies, positions, L):
-    """Create a list with all nodes and their positions inside the rectangular box.
+def get_all_linked_tessellation(
+        atomic_data,
+        structure
+):
+    """Gets the distances by pairs of particles, considering images with periodic boundary conditions (PBC).
 
     Args:
-        particle_types      (list): type of particles (0, 1...).
-        atomic_masses       (dict)
-        charges             (dict)
-        electronegativities (dict)
-        ionization_energies (dict)
-        positions           (list): direct coordinates of particles.
-        L                   (list): size of the box in each direction (x, y, z).
+        atomic_data        (dict):                      A dictionary with all node features.
+        structure          (pymatgen Structure object): Structure from which the graph is to be generated
+        distance_threshold (float, optional):           The distance threshold for edge creation (default is 6).
 
     Returns:
-        all_nodes     (list): features of each node in the box.
-        all_positions (list): positions of the respective nodes.
+        nodes      (list): A tensor containing node attributes.
+        edges      (list): A tensor containing edge indices.
+        attributes (list): A tensor containing edge attributes (distances).
     """
 
-    # Getting all nodes in the supercell
-    all_nodes     = []
-    all_positions = []
-    all_species   = []
-    for idx in range(len(particle_types)):
-        # Get particle type (index of type wrt composition in POSCAR)
-        particle_type = particle_types[idx]
+    # Extract direct positions, composition and concentration as lists
+    positions     = np.array([site.frac_coords for site in structure.sites])
+    composition   = [element.symbol for element in structure.composition.elements]
+    concentration = np.array([sum(site.species_string == element for site in structure.sites) for element in composition])
 
-        # Name of the current species
-        species_name = composition[particle_type]
+    # Counting number of particles
+    total_particles = np.sum(concentration)
 
-        # Loading the node (mass, charge, electronegativity and ionization energy)
-        node = [float(atomic_masses[species_name]),
-                float(charges[species_name]),
-                float(electronegativities[species_name]),
-                float(ionization_energies[species_name])
-                ]
+    # Generating graph structure, getting particle types
+    particle_types = []
+    for i in range(len(composition)):
+        particle_types += [i] * concentration[i]
 
-        # Get the initial position
-        position_0 = positions[idx]
-
-        reference_distance_i = np.nan  # So it outputs False when first compared with another distance
-        i = 0
-        alpha_i = 1
-        while True:
-            minimum_distance_i   = np.nan
-            reference_distance_j = np.nan
-            j = 0
-            alpha_j = 1
-            while True:
-                minimum_distance_j   = np.nan
-                reference_distance_k = np.nan
-                k = 0
-                alpha_k = 1
-                while True:
-                    # Move to the corresponding image and convert to cartesian distances
-                    position_cartesian = np.dot(position_0 + [i, j, k], structure.lattice.matrix)
-                    
-                    new_distance = get_distance_to_box(position_cartesian, L)
-                    if new_distance == 0:
-                        # Append this particle as one inside the desired region
-                        # Afterward, we use this data to construct edge connections
-                        all_nodes.append(node)
-                        all_positions.append(position_cartesian)
-                        all_species.append(species_name)
-                    
-                    # Change direction or update i,j if the box is far
-                    elif new_distance > reference_distance_k:
-                        # Explore other direction or cancel
-                        if alpha_k == 1:
-                            k = 0
-                            alpha_k = -1
-                        else:
-                            break
-                    
-                    reference_distance_k = new_distance
-                    k += alpha_k
-                    
-                    if not minimum_distance_j <= reference_distance_k:
-                        minimum_distance_j = reference_distance_k
-                
-                # If k worked fine, j is fine as well thus continue; else, explore other direction or cancel
-                if minimum_distance_j > reference_distance_j:
-                    if alpha_j == 1:
-                        j = 0
-                        alpha_j = -1
-                    else:
-                        break
-                
-                # Update j
-                j += alpha_j
-                reference_distance_j = minimum_distance_j
-                
-                if not minimum_distance_i <= reference_distance_j:
-                    minimum_distance_i = reference_distance_j
-            
-            # If j did not work fine, explore other direction or cancel
-            if minimum_distance_i > reference_distance_i:
-                if alpha_i == 1:
-                    i = 0
-                    alpha_i = -1
-                else:
-                    break
-            
-            # Update i
-            i += alpha_i
-            reference_distance_i = minimum_distance_i
-    return all_nodes, all_positions, all_species
-
-
-def get_distance_to_box(position_cartesian, L):
-    """Computes the Euclidean distance between a given point and a box of shape [Lx, Ly, Lz].
-    
-    Args:
-        position_cartesian (ndarray) Cartesian coordinates of the point.
-        L                  (list):   Length of the box.
-    
-    Returns:
-        distance (float): Euclidean distance between point and box.
-    """
-        
-    distance = 0
-    for index in range(3):
-        if position_cartesian[index] < 0:
-            distance += np.power(position_cartesian[index], 2)
-        elif position_cartesian[index] > L[index]:
-            distance += np.power(position_cartesian[index] - L[index], 2)
-    distance = np.sqrt(distance)
-    
-    return distance
-
-
-def get_atoms_in_unitcell(particle_types, composition, cell, atomic_masses, charges, electronegativities, ionization_energies, positions):
-    """Create a list with all nodes and their positions belonging to the unit cell.
-
-    Args:
-        particle_types      (list): type of particles (0, 1...).
-        composition
-        cell
-        atomic_masses       (dict):
-        charges             (dict):
-        electronegativities (dict):
-        ionization_energies (dict):
-        positions           (list): direct coordinates of particles.
-
-    Returns:
-        all_nodes     (list): features of each node in the box.
-        all_positions (list): positions of the respective nodes.
-    """
-
-    # Getting all nodes in the supercell
-    all_nodes     = []
-    all_positions = []
-    all_species   = []
-    for idx in range(len(particle_types)):
-        # Get particle type (index of type wrt composition in POSCAR)
-        particle_type = particle_types[idx]
-
-        # Name of the current species
-        species_name = composition[particle_type]
-
-        # Loading the node (mass, charge, electronegativity and ionization energy)
-        node = [float(atomic_masses[species_name]),
-                float(charges[species_name]),
-                float(electronegativities[species_name]),
-                float(ionization_energies[species_name])
-                ]
-
-        # Get the initial position
-        position_0 = positions[idx]
-        
-        # Verify that belongs to the unit cell
-        while np.any(position_0 >  1): position_0[np.where(position_0 > 1)]  -= 1
-        while np.any(position_0 < -1): position_0[np.where(position_0 < -1)] += 1
-        
-        # Convert to cartesian coordinates
-        position_cartesian_0 = np.dot(position_0, cell)
-
-        # Append this particle, which belong to the unit cell
-        # Afterward, we use this data to construct edge connections
-        all_nodes.append(node)
-        all_positions.append(position_cartesian_0)
-        all_species.append(species_name)
-    return all_nodes, all_positions, all_species
-
-
-def get_all_linked_edges_and_attributes(nodes, positions):
-    """From a list of nodes and corresponding positions, get all edges and attributes for the graph.
-    Every pair of particles is linked.
-
-    Args:
-        nodes     (list): All nodes in the box.
-        positions (list): Corresponding positions of the particles.
-
-    Returns:
-        edges      (list): Edges linking all pairs of nodes.
-        attributes (list): Weights of the corresponding edges (Euclidean distance).
-    """
-
-    # Get total particles in the box
-    total_particles = len(nodes)
-
-    # Generate indexes, to easily keep track of the distance
-    idxs = np.arange(total_particles)
-
-    # For each node, look for the three closest particles so that each node only has three connections
+    # Adding nodes and edges.
+    nodes = []
     edges = []
     attributes = []
-    for index_0 in range(total_particles - 1):
-        # Compute the distance of the current particle to all the others
-        distances = np.linalg.norm(positions - positions[index_0], axis=1)
+    for index_0 in range(total_particles):
+        # Get particle type (index of type wrt composition in POSCAR)
+        particle_type = particle_types[index_0]
 
-        # Delete distances above the current index (avoiding repeated distances)
-        temp_idxs = idxs[index_0 + 1:]
-        distances = distances[index_0 + 1:]
+        # Name of the current species
+        species_name = composition[particle_type]
 
-        # Add all edges
-        edges.append([np.ones(len(temp_idxs)) * index_0, temp_idxs])
-        attributes.append(distances)
+        # Adding the nodes (mass, charge, electronegativity and ionization energies)
+        nodes.append([atomic_data[species_name]['atomic_mass'],
+                      atomic_data[species_name]['charge'],
+                      atomic_data[species_name]['electronegativity'],
+                      atomic_data[species_name]['ionization_energy']])
 
-    # Concatenating
-    edges = np.concatenate(edges, axis=1)  # Maintaining the order
-    attributes = np.concatenate(attributes)  # Just distance for the previous pairs of links
-    return edges, attributes
+        # Get the initial position
+        position_0 = positions[index_0]
+        position_cartesian_0 = np.dot(position_0, structure.lattice.matrix)
+
+        # Explore images of all particles in the system
+        # Starting on index_0, thus exploring possible images with itself (except for i,j,k=0, exact same particle)
+        for index_i in np.arange(index_0, total_particles):
+            # Get the initial position
+            position_i = positions[index_i]
+
+            # Move to the corresponding image and convert to cartesian distances
+            position_cartesian_i = np.dot(position_i, structure.lattice.matrix)
+
+            # New distance as Euclidean distance between both reference and new image particle
+            distance = np.linalg.norm([position_cartesian_0 - position_cartesian_i])
+
+            # Append this point as an edge connection to particle 0
+            edges.append([index_0, index_i])
+            attributes.append([distance])
+    return nodes, edges, attributes
 
 
-def get_voronoi_tessellation(atomic_data, temp_structure, periodicity):
+def get_voronoi_tessellation(
+        atomic_data,
+        temp_structure,
+        periodicity
+):
     """
     Get the Voronoi nodes of a structure.
     Templated from the TopographyAnalyzer class, added to pymatgen.analysis.defects.utils by Yiming Chen, but now deleted.
@@ -244,7 +94,7 @@ def get_voronoi_tessellation(atomic_data, temp_structure, periodicity):
     Args:
         atomic_data    (dict):                      A dictionary with all node features.
         temp_structure (pymatgen Structure object): Structure from which the graph is to be generated.
-        periodicity    (bool):                      Whether or not to consider periodicity of the structure.
+        periodicity    (bool):                      Whether to consider periodicity of the structure.
     """
     
     # Map all sites to the unit cell; 0 ≤ xyz < 1
@@ -353,7 +203,11 @@ def get_voronoi_tessellation(atomic_data, temp_structure, periodicity):
     return nodes, edges, attributes
 
 
-def get_sphere_images_tessellation(atomic_data, structure, distance_threshold=6):
+def get_sphere_images_tessellation(
+        atomic_data,
+        structure,
+        distance_threshold=6
+):
     """Gets the distances by pairs of particles, considering images with periodic boundary conditions (PBC).
 
     Args:
@@ -482,7 +336,10 @@ def get_sphere_images_tessellation(atomic_data, structure, distance_threshold=6)
     return nodes, edges, attributes
 
 
-def get_molecule_tessellation(atomic_data, smiles):
+def get_molecule_tessellation(
+        atomic_data,
+        smiles
+):
     """Extracts graph information from SMILES codification of a molecule.
 
     Args:
@@ -520,7 +377,12 @@ def get_molecule_tessellation(atomic_data, smiles):
     return nodes, edges, attributes
 
 
-def graph_POSCAR_encoding(structure, encoding_type='voronoi', distance_threshold=6, periodicity=True):
+def graph_POSCAR_encoding(
+        structure,
+        encoding_type='voronoi',
+        distance_threshold=6,
+        periodicity=True
+):
     """Generates a graph parameters from a POSCAR.
     There are the following implementations:
         1. Voronoi tessellation.
@@ -563,6 +425,11 @@ def graph_POSCAR_encoding(structure, encoding_type='voronoi', distance_threshold
                                                                   structure,
                                                                   distance_threshold=distance_threshold)
 
+    elif encoding_type == 'all-linked':
+        # Get edges and attributes for the corresponding tessellation
+        nodes, edges, attributes = get_all_linked_tessellation(atomic_data,
+                                                               structure)
+
     elif encoding_type == 'molecule':
         # Get edges and attributes for the corresponding tessellation
         nodes, edges, attributes = get_molecule_tessellation(atomic_data,
@@ -578,7 +445,10 @@ def graph_POSCAR_encoding(structure, encoding_type='voronoi', distance_threshold
     return nodes, edges, attributes
 
 
-def find_closest_key(dictionary, target_array):
+def find_closest_key(
+        dictionary,
+        target_array
+):
     """Find the key in the dictionary that corresponds to the array closest to the target array.
 
     Parameters:
@@ -605,7 +475,9 @@ def find_closest_key(dictionary, target_array):
     return closest_key
 
 
-def discretize_graph(graph):
+def discretize_graph(
+        graph
+):
     """Convert the graph's continuous node embeddings to the closest valid embeddings based on the periodic table.
 
     Args:
@@ -660,7 +532,10 @@ def discretize_graph(graph):
     return new_graph
 
 
-def composition_concentration_from_keys(keys, positions):
+def composition_concentration_from_keys(
+        keys,
+        positions
+):
     """Calculate composition and concentration from a list of keys. It sorts the elements, so they are enumerated only once. Attending to that, the positions are sorted as well.
 
     Args:
@@ -687,7 +562,13 @@ def composition_concentration_from_keys(keys, positions):
     return composition, concentration, positions_sorted
 
 
-def POSCAR_graph_encoding(graph, lattice_vectors, file_name='POSCAR', POSCAR_name=None, POSCAR_directory='./'):
+def POSCAR_graph_encoding(
+        graph,
+        lattice_vectors,
+        file_name='POSCAR',
+        POSCAR_name=None,
+        POSCAR_directory='./'
+):
     """Encode a graph into a POSCAR (VASP input) file format.
 
     Args:ººº
@@ -759,7 +640,9 @@ def POSCAR_graph_encoding(graph, lattice_vectors, file_name='POSCAR', POSCAR_nam
     return POSCAR_file
 
 
-def check_graph_validity(graph):
+def check_graph_validity(
+        graph
+):
     """Check that the current graph describes a realistic material (positive interatomic distances, etc.).
 
     Args:

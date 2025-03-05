@@ -5,7 +5,9 @@ import torch
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
-def check_finite_attributes(data):
+def check_finite_attributes(
+        data
+):
     """
     Checks if all node and edge attributes in the graph are finite (i.e., not NaN, inf, or -inf).
 
@@ -27,7 +29,11 @@ def check_finite_attributes(data):
     return True
 
 
-def standardize_dataset(dataset, transformation=None, scale=1e0):
+def standardize_dataset(
+        dataset,
+        transformation=None,
+        scale=1e0
+):
     """Standardizes a given dataset (both nodes features and edge attributes).
     Typically, a normal distribution is applied, although it be easily modified to apply other distributions.
     Check those graphs with finite attributes and retains labels accordingly.
@@ -118,7 +124,10 @@ def standardize_dataset(dataset, transformation=None, scale=1e0):
     return dataset_std, dataset_parameters
 
 
-def revert_standardize_dataset(dataset, dataset_parameters):
+def revert_standardize_dataset(
+        dataset,
+        dataset_parameters
+):
     """De-standardizes a given dataset (both nodes features and edge attributes).
     Typically, a normal distribution is applied, although it be easily modified to apply other distributions.
 
@@ -150,7 +159,11 @@ def revert_standardize_dataset(dataset, dataset_parameters):
     return dataset_rstd
 
 
-def get_datasets(subset_labels, dataset_labels, dataset):
+def get_datasets(
+        subset_labels,
+        dataset_labels,
+        dataset
+):
     """Get datasets filtered, non-ordered by labels.
 
     Args:
