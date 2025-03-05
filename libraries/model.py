@@ -329,7 +329,7 @@ class GNN(torch.nn.Module):
 
         neurons_e_1 = 128
         neurons_e_2 = 256
-        neurons_e_3 = 256
+        neurons_e_3 = 128
         #neurons_e_4 = 32
 
         # Node update layers (GraphConv)
@@ -530,7 +530,7 @@ class EarlyStopping():
         self.counter = 0
         self.best_score = None
         self.early_stop = False
-        self.val_loss_min = np.Inf
+        self.val_loss_min = np.inf
         self.wandb_run = wandb_run
         self.model_name = model_name
 
