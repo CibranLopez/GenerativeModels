@@ -384,13 +384,13 @@ class GNN(
 
         torch.manual_seed(12345)
 
-        neurons_n_1 = 128
-        neurons_n_2 = 256
+        neurons_n_1 = 32
+        neurons_n_2 = 64
         #neurons_n_3 = 64
 
-        neurons_e_1 = 128
-        neurons_e_2 = 256
-        neurons_e_3 = 128
+        neurons_e_1 = 32
+        neurons_e_2 = 32
+        neurons_e_3 = 16
         #neurons_e_4 = 32
 
         # Node update layers (GraphConv)
