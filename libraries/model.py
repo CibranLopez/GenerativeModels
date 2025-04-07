@@ -337,7 +337,7 @@ def denoise(
 
         # Stack time step across batch dimension
         batch_s.x[:, -1] = t_step_std
-        print(batch_s.shape())
+        
         # Predict batch noise at given time step
         pred_epsilon_t = predict_noise(batch_s, model)
         
