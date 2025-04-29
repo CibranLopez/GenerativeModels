@@ -257,9 +257,11 @@ def predict_noise(
     Returns:
         pred_e_batch_t (torch_geometric.data.Data): Predicted noise for batch g_batch_t.
     """
-
+    # Clone the original batch of graphs to prevent in-place modifications
+    batch = batch_t.clone().to(device)
+    
     # Perform a single forward pass for predicting node features
-    return model(batch_t)
+    return model(batch)
 
 
 def denoising_step(
@@ -353,7 +355,6 @@ def denoise(
         batch_s = denoising_step(batch_s, pred_epsilon_t,
                                  t_step, n_t_steps, alpha_decay,
                                  n_features=n_features)
-        #print(batch_s.x[:2])
         
     # Check if intermediate steps are plotted; then, plot the NetworkX graph
     if plot_steps:
